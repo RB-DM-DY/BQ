@@ -1,0 +1,12 @@
+/*Пример сборки датасета от CRM обновляемого по новым строкам*/
+
+
+--Вставка всех строк при копировании или добавлении полей, изменении их архитектуры
+INSERT INTO
+  raiffeisen-owox.CRM.order_tmp (_PARTITIONTIME,ORDER_ID, APP_ID, LEAD_DATE, PRODUCT_LINE, PRODUCT, NTB, GOOGLE_ID, UTM_MEDIUM, UTM_SOURCE, UTM_CAMPAIGN, UTM_CONTENT, UTM_TERM, SEGMENT_REQUEST_LIMIT, SEGMENT_ISSUES_LIMIT, STATUSES, SALE_CH_CODE, PROCESSING_CHANNEL)
+SELECT
+ TIMESTAMP_TRUNC(LeadDate, DAY) d, leadid e, leadid, LeadDate, PRODUCT_LINE a, PRODUCT_LINE b, NTB , GOOGLE_ID, UTM_MEDIUM, UTM_SOURCE, UTM_CAMPAIGN, UTM_CONTENT, utm_term, segmentRequestLimit, STAT.SEGMENTISSUESLIMIT,[STRUCT(DATE( LeadDate ), STAT.STATUS, STAT.APPROVAL)], STAT.SALE_CH_CODE, STAT.PROCESSING_CHANNEL
+  FROM (SELECT * 
+FROM `raiffeisen-owox.Orders_CRM.crm_orders_2019_base_d`
+WHERE LeadDate > "2020-05-24") CRM
+LEFT JOIN (SELECT STAT FROM Orders_CRM.crm_orders_2019_other STAT) ON leadid = STAT.LEADID
