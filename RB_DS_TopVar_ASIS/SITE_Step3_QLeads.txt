@@ -1,0 +1,97 @@
+SELECT Month,	Year,	Sessions,	Leads, QLeads, Issues, Cost, NTB, Product, "organic" AS Medium 
+FROM (
+SELECT Month, Year,
+       IF(LeadID='notset',0,0) AS Sessions,
+       IF(LeadID='notset',0,0) AS Leads,       
+       COUNT(LeadID) OVER (PARTITION BY Year, Month, Medium, NTB, Product) AS QLeads,
+       IF(LeadID='notset',0,0) AS Issues, 
+       IF(LeadID='notset',0,0) AS Cost,         
+       NTB, Product, Medium
+FROM (
+SELECT Month, Year, Date, LeadID, Product, NTB, Medium
+FROM (
+SELECT *,
+       IF((REGEXP_CONTAINS(Product,r'PL|CC') and (StatusLead = 'lead' or StatusLead = 'open' or StatusLead = 'deal') and (ApprovalLead = 'pending' or
+           ApprovalLead = 'approved' or ApprovalLead = 'Approved' or ApprovalLead = 'approval' or ApprovalLead = 'Approval')),'QLead',
+       IF((REGEXP_CONTAINS(Product,r'DC|PD') and (StatusLead = 'open' or StatusLead = 'delivered' or StatusLead = 'active')),'QLead',
+       IF((REGEXP_CONTAINS(Product,r'ML') and (StatusLead = 'application' or StatusLead = 'deal')),'QLead',         
+       IF((REGEXP_CONTAINS(Product,r'SA|TD') and StatusLead = 'open'),'QLead',
+       IF((REGEXP_CONTAINS(Product,r'SME') and REGEXP_CONTAINS(StatusLead,R'Qlead|Scoring|Arrest_check|Application|Open')),'QLead',       
+       IF(Product = 'Other' and
+         (StatusLead = 'lead' or StatusLead = 'open' or StatusLead = 'deal' or StatusLead = 'delivered' or StatusLead = 'active') and 
+         (ApprovalLead = 'pending' or ApprovalLead = 'approved' or ApprovalLead = 'Approved' or ApprovalLead = 'approval' or ApprovalLead = 'Approval'),
+          'QLead','not')))))) as QLead    
+FROM (
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--УНИКАЛИЗИРУЕМ ПО LEADID
+SELECT EXTRACT(MONTH FROM Date) AS Month, EXTRACT(YEAR FROM Date) AS Year, Date, LeadID, ProductLine, Product, Medium, NTB, StatusLead, ApprovalLead
+FROM (
+SELECT Date, LeadID, ProductLine, Product, Medium, NTB, StatusLead, ApprovalLead,
+       ROW_NUMBER() OVER (PARTITION BY LeadID) AS ROW
+FROM (
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ОБРАБОТКА ЛИДОВ С LEADID       
+SELECT DATE(LeadDate) AS Date, leadid AS LeadID, PRODUCT_LINE AS ProductLine, 
+       CASE 
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Credit') THEN 'CC'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Debit|IPayroll|MasterCard|Gold') THEN 'DC'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Premium Direct') THEN 'Premium Product'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Mortgage') THEN 'ML / ML REF'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Personal Loans') THEN 'PL / PL REF / PL Auto'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Saving Accounts') THEN 'SA'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Standard Term Deposits') THEN 'TD'  
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'RKO') THEN 'SME'
+       ELSE 'Other' END AS Product, UTM_MEDIUM AS Medium,
+       NTB, STATUS AS StatusLead, APPROVAL AS ApprovalLead 
+FROM `raiffeisen-owox.Orders_CRM.CRM_orders`
+WHERE REGEXP_CONTAINS(UTM_MEDIUM,R"organic|referral|\(none\)") 
+      OR (UTM_MEDIUM IS NULL AND UTM_SOURCE IS NULL)
+--      AND REGEXP_MATCH(UTM_SOURCE,R'yandex$|google$|mytarget|facebook|dbm|astraone')      
+--      AND CAST(DATE(LeadDate) AS STRING) BETWEEN '2018-11-01' AND '2018-11-30'
+      AND CAST(DATE(LeadDate) AS STRING) BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'-01-01') AND CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING)
+--      AND REGEXP_CONTAINS(PRODUCT_LINE,r'Personal Loans')
+      AND leadid IS NOT NULL
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+UNION ALL
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ОБРАБОТКА ЛИДОВ БЕЗ LEADID
+SELECT Date, CAST(LeadID AS STRING) AS LeadID, ProductLine, Product, Medium, NTB, StatusLead, ApprovalLead
+FROM (       
+SELECT Date,
+       ROW_NUMBER() OVER (PARTITION BY LeadID) AS LeadID,
+       ProductLine, Product, Medium, NTB, StatusLead, ApprovalLead
+FROM (       
+SELECT DATE(LeadDate) AS Date, leadid AS LeadID, PRODUCT_LINE AS ProductLine, 
+       CASE 
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Credit') THEN 'CC'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Debit|IPayroll|MasterCard|Gold') THEN 'DC'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Premium Direct') THEN 'Premium Product'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Mortgage') THEN 'ML / ML REF'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Personal Loans') THEN 'PL / PL REF / PL Auto'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Saving Accounts') THEN 'SA'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Standard Term Deposits') THEN 'TD'  
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'RKO') THEN 'SME'
+       ELSE 'Other' END AS Product, UTM_MEDIUM AS Medium,
+       NTB, STATUS AS StatusLead, APPROVAL AS ApprovalLead 
+FROM `raiffeisen-owox.Orders_CRM.CRM_orders`
+WHERE REGEXP_CONTAINS(UTM_MEDIUM,R"organic|referral|\(none\)") 
+      OR (UTM_MEDIUM IS NULL AND UTM_SOURCE IS NULL)
+--      AND REGEXP_MATCH(UTM_SOURCE,R'yandex$|google$|mytarget|facebook|dbm|astraone')      
+--      AND CAST(DATE(LeadDate) AS STRING) BETWEEN '2018-11-01' AND '2018-11-30'
+      AND CAST(DATE(LeadDate) AS STRING) BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'-01-01') AND CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING)
+--      AND REGEXP_CONTAINS(PRODUCT_LINE,r'Personal Loans')
+      AND leadid IS NULL
+) AS t0
+) AS t1
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+) AS t1
+) AS t2
+WHERE ROW=1
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+) AS t1
+) AS t2
+WHERE QLead = 'QLead'
+) AS t3
+) AS t4
+GROUP BY Month,	Year,	Sessions,	Leads, QLeads, Issues, Cost, NTB,	Product, Medium
+--ORDER BY Year, Month, Product

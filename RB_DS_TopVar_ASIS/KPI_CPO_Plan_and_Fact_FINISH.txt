@@ -1,0 +1,125 @@
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+-----------------------------------------------         BUILDING TABLES          ----------------------------------------------
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+WITH DATA AS (
+SELECT *
+FROM `raiffeisen-owox.RB_DS_TopVar_ASIS.KPI_CPO_Plan_and_Fact_DATAtb`
+),
+BFNAME AS (
+SELECT Date, Product, GroupChannel, VB,	BrandFormance, BFName
+FROM DATA
+WHERE BrandFormance="TRUE"
+GROUP BY Date, Product, GroupChannel, VB,	BrandFormance, BFName
+),
+YtY_AGRIGATE_TABLE AS (
+SELECT DateCurYear AS Date, EXTRACT(MONTH FROM DateCurYear) AS Month, EXTRACT(YEAR FROM DateCurYear) AS Year,
+       NULL AS FactSessions, NULL AS FactLeads, NULL AS FactQLeads, NULL AS FactIssues, NULL AS FactCost,
+       NULL AS PlanSessions, NULL AS PlanLeads,	NULL AS PlanQleads,	NULL AS PlanIssues,	NULL AS PlanCost,
+       TagNTB, Product,	GroupChannel,	Source,	Medium,	VB,	BrandFormance, BFName,
+       API,	PlanFilter,	UpDate,	Level, PlanIssuesYear, PlanCostYear,
+       FactSessions AS YtYFactSessions, FactLeads AS YtYFactLeads,
+       FactQLeads AS YtYFactQLeads, FactIssues AS YtYFactIssues, FactCost AS YtYFactCost,   
+       NULL AS MtMFactSessions, NULL AS MtMFactLeads, NULL AS MtMFactQLeads, NULL AS MtMFactIssues, NULL AS MtMFactCost        
+FROM (
+SELECT Date, Month,	Year,	DATE_ADD(Date, INTERVAL 1 YEAR) AS DateCurYear,
+       FactSessions, FactLeads, FactQLeads, FactIssues, FactCost,	
+       PlanSessions, PlanLeads,	PlanQleads,	PlanIssues,	PlanCost,
+       TagNTB, Product,	GroupChannel,	Source,	Medium,	VB,	BrandFormance, BFName, 
+       API,	PlanFilter,	UpDate,	Level, PlanIssuesYear, PlanCostYear
+FROM (
+SELECT *
+FROM DATA
+) AS t1
+) AS t2
+WHERE DateCurYear IS NOT NULL
+),
+MtM_AGRIGATE_TABLE AS (
+SELECT DateNextMonth AS Date, EXTRACT(MONTH FROM DateNextMonth) AS Month, EXTRACT(YEAR FROM DateNextMonth) AS Year,
+       NULL AS FactSessions, NULL AS FactLeads, NULL AS FactQLeads, NULL AS FactIssues, NULL AS FactCost,
+       NULL AS PlanSessions, NULL AS PlanLeads,	NULL AS PlanQleads,	NULL AS PlanIssues,	NULL AS PlanCost,
+       TagNTB, Product,	GroupChannel,	Source,	Medium,	VB,	BrandFormance, BFName,
+       API,	PlanFilter,	UpDate,	Level, PlanIssuesYear, PlanCostYear,
+       NULL AS YtYFactSessions, NULL AS YtYFactLeads, NULL AS YtYFactQLeads, NULL AS YtYFactIssues, NULL AS YtYFactCost,   
+       FactSessions AS MtMFactSessions, FactLeads AS MtMFactLeads,
+       FactQLeads AS MtMFactQLeads, FactIssues AS MtMFactIssues, FactCost AS MtMFactCost        
+FROM (
+SELECT Date, Month,	Year,	DATE_ADD(Date, INTERVAL 1 MONTH) AS DateNextMonth,
+       FactSessions, FactLeads, FactQLeads, FactIssues, FactCost,	
+       PlanSessions, PlanLeads,	PlanQleads,	PlanIssues,	PlanCost,
+       TagNTB, Product,	GroupChannel,	Source,	Medium,	VB,	BrandFormance, BFName, 
+       API,	PlanFilter,	UpDate,	Level, PlanIssuesYear, PlanCostYear
+FROM (
+SELECT *
+FROM DATA
+) AS t1 --where extract(month from Date)=1
+) AS t2 --СЧИТАЕМ ПОЛНЫЙ ПРОШЛЫЙ МЕСЯЦ,Т.Е. ТЕКУЩИЙ ФЕВРАЛЬ 28 ДНЕЙ, ПРЕДЫДУЩИЙ ЯНВАРЬ 31 ДЕНЬ
+        --ДАТЫ С 28.01 ПО 31.01 ОТНЕСЕНЫ К 28.02
+),
+DATA_UNION AS (
+SELECT *
+FROM DATA
+UNION ALL
+SELECT *
+FROM YtY_AGRIGATE_TABLE
+UNION ALL
+SELECT *
+FROM MtM_AGRIGATE_TABLE
+)
+
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+-----------------------------------------------            START QUERY           ----------------------------------------------
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+--SELECT Date,	Month, Year,
+--       SUM(FactSessions) AS FactSessions,
+--       SUM(FactLeads) AS FactLeads,
+--       SUM(FactQLeads) AS FactQLeads,
+--       SUM(FactIssues) AS FactIssues,
+--       SUM(FactCost) AS FactCost,
+--       SUM(PlanSessions) AS PlanSessions,
+--       SUM(PlanLeads) AS PlanLeads, 
+--       SUM(PlanQleads) AS PlanQleads,
+--       SUM(PlanIssues) AS PlanIssues,
+--       SUM(PlanCost) AS PlanCost,
+--       TagNTB, Product,	GroupChannel,	Source,	Medium,	VB,	BrandFormance, BFName, API,	PlanFilter,	UpDate,	Level,
+--       PlanIssuesYear, PlanCostYear, CurrentYear,	PrevuesYear,
+--       SUM(YtYFactSessions) AS YtYFactSessions,
+--       SUM(YtYFactLeads) AS	YtYFactLeads,
+--       SUM(YtYFactQLeads) AS YtYFactQLeads,
+--       SUM(YtYFactIssues) AS YtYFactIssues,
+--       SUM(YtYFactCost) AS YtYFactCost,
+--       SUM(MtMFactSessions) AS MtMFactSessions,
+--       SUM(MtMFactLeads) AS	MtMFactLeads,
+--       SUM(MtMFactQLeads) AS MtMFactQLeads,
+--       SUM(MtMFactIssues) AS MtMFactIssues,
+--       SUM(MtMFactCost) AS MtMFactCost       
+--FROM (
+----SELECT Year, BFName
+----FROM (
+--SELECT DATA_UNION.Date, DATA_UNION.Month,	DATA_UNION.Year,
+--       DATA_UNION.FactSessions, DATA_UNION.FactLeads,	DATA_UNION.FactQLeads,	DATA_UNION.FactIssues,	DATA_UNION.FactCost,
+--       DATA_UNION.PlanSessions, DATA_UNION.PlanLeads,	DATA_UNION.PlanQleads,	DATA_UNION.PlanIssues,	DATA_UNION.PlanCost,
+--       DATA_UNION.TagNTB, DATA_UNION.Product,	DATA_UNION.GroupChannel, DATA_UNION.Source,	DATA_UNION.Medium,	DATA_UNION.VB, 
+--       DATA_UNION.BrandFormance,
+--       BFNAME.BFName,
+--       DATA_UNION.API, DATA_UNION.PlanFilter, DATA_UNION.UpDate, DATA_UNION.Level, DATA_UNION.PlanIssuesYear, DATA_UNION.PlanCostYear, 
+--       DATA_UNION.CurrentYear, DATA_UNION.PrevuesYear,
+--       DATA_UNION.YtYFactSessions, DATA_UNION.YtYFactLeads,	DATA_UNION.YtYFactQLeads, DATA_UNION.YtYFactIssues,	DATA_UNION.YtYFactCost,
+--       DATA_UNION.MtMFactSessions, DATA_UNION.MtMFactLeads, DATA_UNION.MtMFactQLeads, DATA_UNION.MtMFactIssues,	DATA_UNION.MtMFactCost
+--FROM (
+SELECT *
+FROM DATA_UNION
+--) AS DATA_UNION
+--LEFT JOIN (
+--SELECT *
+--FROM BFNAME
+--) AS BFNAME
+--ON DATA_UNION.Date=BFNAME.Date AND
+--   DATA_UNION.Product=BFNAME.Product AND
+--   DATA_UNION.GroupChannel=BFNAME.GroupChannel AND 
+--   DATA_UNION.VB=BFNAME.VB AND
+--   DATA_UNION.BrandFormance=BFNAME.BrandFormance
+----) AS T1
+----GROUP BY Year, BFName
+--) AS t1
+--GROUP BY Date,	Month, Year, TagNTB, Product,	GroupChannel,	Source,	Medium,	VB,	BrandFormance, BFName,
+--         API,	PlanFilter,	UpDate,	Level, PlanIssuesYear, PlanCostYear, CurrentYear,	PrevuesYear

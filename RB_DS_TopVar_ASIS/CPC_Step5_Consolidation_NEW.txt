@@ -1,0 +1,603 @@
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+-----------------------------------------------         BUILDING TABLES          ----------------------------------------------
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+--------------------------------------------------------------------------------------------------------------------------------
+
+WITH CPC_SESSIONS AS (--<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+-------------------------------------------------------------------------------------------------------------------------------------------
+--ТАБЛИЦА С ТРАФИКОМ 
+SELECT DATE(CAST(SUBSTR(date,0,4) AS INT64),CAST(SUBSTR(SUBSTR(date, 0, 6),-2) AS INT64),CAST(SUBSTR(date,-2) AS INT64)) AS date,
+       sessionId, source, medium, campaign, keyword  
+FROM ( 
+SELECT date, sessionId, source, medium, 
+       if(REGEXP_CONTAINS(campaign,r"%2C|%2c"),REGEXP_REPLACE(campaign,r"%2C|%2c",","),campaign) AS campaign, keyword,
+       ROW_NUMBER() OVER (PARTITION BY sessionId) AS ROW       
+FROM ( 
+SELECT date, sessionId, source, medium, 
+       if(REGEXP_CONTAINS(campaign,r"%3A|%3a|%253A|%253a"),REGEXP_REPLACE(campaign,r"%3A|%3a|%253A|%253a",":"),campaign) AS campaign,
+       keyword
+FROM ( 
+SELECT date, sessionId, source, medium, campaign, keyword
+FROM (
+SELECT *,
+       ROW_NUMBER() OVER (PARTITION BY date, sessionId) AS ROW
+FROM (
+SELECT date, IF(customDimensions.index=4,customDimensions.value,NULL) AS sessionId,
+       trafficSource.source AS source, trafficSource.medium AS medium,
+       if(REGEXP_CONTAINS(trafficSource.campaign,r"%7C|%7c|%257C|%257c"),REGEXP_REPLACE(trafficSource.campaign,r"%7C|%7c|%257C|%257c","|"),trafficSource.campaign) AS campaign,
+       trafficSource.keyword AS keyword
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h
+WHERE
+      _TABLE_SUFFIX BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-2 AS STRING),'0101') AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
+      AND trafficSource.medium = "cpc"
+GROUP BY date, sessionId, source, medium, campaign, keyword
+) AS t0
+WHERE sessionId IS NOT NULL
+) AS tROW
+WHERE ROW=1
+) AS t1 
+) As t2
+) AS t4  
+WHERE ROW=1
+-------------------------------------------------------------------------------------------------------------------------------------------
+),
+NTB AS (--<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+SELECT * 
+FROM `raiffeisen-owox.Dictionary_US.NTB_Identification_Query` 
+),
+CPC_BF AS (--<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+SELECT BFName, CampaignIDCM CampaignID, DateStart, DateFinish
+FROM `raiffeisen-owox.RB_DS_BrandFormance.Dictionary_BrandFormance_Dates`
+),
+CPC_BF_SESSIONS AS ( --<<<<<<<<<<<<<<
+-------------------------------------------------------------------------------------------------------------------------------------------
+--ВЫДЕЛИЛИ ТРАФИК BRANDFORMANCE
+SELECT *
+FROM (
+SELECT t1.date,	t1.sessionId,	t1.source, t1.medium,	t1.campaign,
+       t2.BFName, t2.CampaignID, t2.DateStart, t2.DateFinish
+FROM (       
+SELECT *
+FROM CPC_SESSIONS
+) AS t1
+INNER JOIN (
+SELECT *
+FROM CPC_BF
+) AS t2
+ON REGEXP_CONTAINS(t1.keyword,t2.CampaignID)
+   AND t1.date BETWEEN t2.DateStart AND t2.DateFinish
+) AS t1
+GROUP BY date, sessionId, source, medium, campaign, BFName,	CampaignID,	DateStart, DateFinish
+-------------------------------------------------------------------------------------------------------------------------------------------  
+),
+CPC_COST_DATA AS (--<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+-------------------------------------------------------------------------------------------------------------------------------------------
+--ТАБЛИЦА С РАСХОДАМИ
+SELECT date, sessionId, adCost, source, medium, campaign,
+       CONCAT(CAST(date AS STRING),source,medium,campaign) AS CostConCat
+FROM (       
+SELECT DATE(CAST(SUBSTR(date,0,4) AS INT64),CAST(SUBSTR(SUBSTR(date, 0, 6),-2) AS INT64),CAST(SUBSTR(date,-2) AS INT64)) AS date,
+       sessionId, adCost, source, medium, campaign
+FROM (
+
+SELECT date, sessionId,	SUM(adCost) AS adCost, source, medium, campaign, CostConCat
+FROM (
+
+SELECT date, "NULL" AS sessionId, adCost, source, medium, campaign,
+       CONCAT(CAST(date AS STRING),source,medium,campaign) AS CostConCat
+FROM (       
+SELECT date, source, medium,    
+       IF(REGEXP_CONTAINS(campaign,r"%2C|%2c"),REGEXP_REPLACE(campaign,r"%2C|%2c",","),campaign) AS campaign,   
+       adCost
+FROM (
+SELECT date, source, medium,    
+       IF(REGEXP_CONTAINS(campaign,r"%3A|%3a|%253A|%253a"),REGEXP_REPLACE(campaign,r"%3A|%3a|%253A|%253a",":"),campaign) AS campaign,   
+       adCost
+FROM (
+SELECT date, source, medium,    
+       IF(REGEXP_CONTAINS(campaign,r"%7C|%7c|%257C|%257c"),REGEXP_REPLACE(campaign,r"%7C|%7c|%257C|%257c","|"),campaign) AS campaign,
+       adCost
+FROM (
+SELECT date, source, medium, campaign, SUM(adCost) AS adCost
+FROM `raiffeisen-owox.OWOXBI_CostData.CostData_*`
+WHERE 
+      _TABLE_SUFFIX BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-2 AS STRING),'0101') AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
+      AND medium = "cpc"   
+      AND adCost > 0
+GROUP BY date, source, medium, campaign   
+) AS t1
+) AS t2
+) AS t3
+) AS t4
+
+UNION ALL
+
+SELECT date, sessionId, adCost, source, medium, campaign,	CostConCat
+FROM (
+SELECT *,
+       IF(adCost=0,TRUE,FALSE) AS CheckCost
+FROM (       
+SELECT date, sessionId,	SUM(adCost) AS adCost, source, medium, campaign,
+       CONCAT(CAST(date AS STRING),source,medium,campaign) AS CostConCat
+FROM (
+SELECT REPLACE(day,"-","") AS date, "NULL" AS sessionId, cost AS adCost, 
+       IF(REGEXP_CONTAINS(channel,"dir"),"yandex",channel)  AS source, ---!!!change "google" on channel
+       "cpc" AS medium, campaign, EXTRACT(YEAR FROM CAST(day AS DATE)) AS YEAR
+FROM `raiffeisen-owox.OWOXBI_CostData.ancore_ga2_campaign` 
+WHERE REGEXP_CONTAINS(campaign,"plt:mkb|mkb") 
+      OR channel="dbm"
+      AND cost<>0
+) AS t1
+WHERE YEAR<>EXTRACT(YEAR FROM CURRENT_DATE())-2
+GROUP BY date, sessionId,	source, medium, campaign
+) AS t2
+) AS t3
+WHERE CheckCost IS FALSE
+
+) AS t1
+GROUP BY date, sessionId,	source, medium, campaign, CostConCat
+
+) AS tNEW1
+) AS tNEW2
+-------------------------------------------------------------------------------------------------------------------------------------------
+),
+CPC_COST_PER_SESSIONS AS (--<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+-------------------------------------------------------------------------------------------------------------------------------------------
+--ВЫЧИСЛЯЕМ СТОИМОСТЬ КАЖДОЙ СЕССИИ
+SELECT date, Sessions, adCost, adCost/Sessions as CostSessions, source,	medium,	campaign,
+       CONCAT(CAST(date AS STRING),source,medium,campaign) AS CostConcat
+FROM (
+SELECT date, sum(Sessions) as Sessions, sum(adCost) as adCost, source, medium, campaign
+FROM (
+SELECT date, 1 as Sessions, adCost, source,	medium,	campaign
+FROM (
+SELECT date, sessionId, 0 as adCost, source,	medium,	campaign      
+FROM CPC_SESSIONS
+UNION ALL
+SELECT date, "UNKNOWN" AS sessionId, adCost, source, medium, campaign
+FROM CPC_COST_DATA
+) AS t1
+--where extract(year from date)=2019 and extract(month from date)=3 and source="yandex" --!!!!!!!!!!!!!!!!!!!!!
+) AS t2 
+GROUP BY date, source, medium,	campaign
+) AS t3
+-------------------------------------------------------------------------------------------------------------------------------------------
+),
+CPC_SESSIONS_PIVOT AS (--<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+------------------------------------------------------------------------------------------------------------------------------------------- 
+-- НОВЫЙ ФОРМАТ ДАШБОРДА
+SELECT date, Month, Year, Sessions, Leads, QLeads, Issues, 
+       IF(Year<=2018,ROUND(Cost*0.18+Cost,0),ROUND(Cost*0.20+Cost,0)) AS Cost,
+       TagNTB, Product, medium AS Medium, VB, BrandFormance, BFName, "FORM_LEAD" AS API
+FROM ( 
+SELECT date, Month, Year,
+       SUM(Sessions) AS Sessions,
+       SUM(Leads) AS Leads, 
+       SUM(QLeads) AS QLeads, 
+       SUM(Issues) AS Issues,
+       SUM(Cost) AS Cost,  
+       TagNTB, Product, medium, VB, BrandFormance, BFName
+FROM (
+SELECT date, Month, Year,
+       Sessions,
+       0 AS Leads, 
+       0 AS QLeads, 
+       0 AS Issues,
+       adCost AS Cost, source,   
+       TagNTB, Product, medium, VB, BrandFormance, BFName
+FROM (          
+------------------------------------------------------------------------------------------------------------------------------------------- 
+--ДОБАВЛЕНИЕ ИДЕНТИФИКАТОРА BRANDFORMANCE
+SELECT *
+FROM (
+SELECT date, EXTRACT(MONTH FROM date) AS Month, EXTRACT(YEAR FROM date) AS Year, Sessions, adCost, source, medium, Product, TagNTB, VB, BrandFormance, BFName
+FROM (
+SELECT date, Sessions AS Sessions, Cost AS adCost, source, medium, Product, TagNTB, VB, BrandFormance, BFName
+FROM (       
+SELECT date, Sessions, Cost, source, medium, 
+          CASE   
+              WHEN ( REGEXP_CONTAINS(campaign,"pr:deposit") AND REGEXP_CONTAINS(campaign,"savings") ) OR REGEXP_CONTAINS(campaign,R"deposit_saving|_saving|saving|deposit_savings|_savings|savings") THEN "SA" 
+              WHEN ( REGEXP_CONTAINS(campaign,"pr:deposit") AND REGEXP_CONTAINS(campaign,"deposit") ) OR REGEXP_CONTAINS(campaign,R"deposit") THEN "TD"               
+              WHEN REGEXP_CONTAINS(campaign,"pr:cc") OR REGEXP_CONTAINS(campaign,R"_cc_|cc_|_cc110_|cc110_") THEN "CC"    
+              WHEN REGEXP_CONTAINS(campaign,"pr:dc") OR REGEXP_CONTAINS(campaign,R"_dc_|dc_|debit_card|_gold_|gold_") THEN "DC"         
+              WHEN REGEXP_CONTAINS(campaign,"pr:sme") OR REGEXP_CONTAINS(campaign,R"_RKO_|RKO_|rko_brandfrms") THEN "SME"    
+              WHEN REGEXP_CONTAINS(campaign,"pr:ml") OR REGEXP_CONTAINS(campaign,R"_ml_|ml_|refmrtgloans_|mortgage") THEN "ML / ML REF"   
+              WHEN REGEXP_CONTAINS(campaign,"pr:pl") OR REGEXP_CONTAINS(campaign,R"_pl_|pl_|_potreb_|potreb_|potreb_credit|refinans_|personal-loans|auto_credit") THEN "PL / PL REF / PL Auto" 
+              WHEN REGEXP_CONTAINS(campaign,"pr:pb") THEN "Premium Product"                
+              ELSE "Other" 
+          END AS Product, 
+          TagNTB,
+          CASE 
+              WHEN REGEXP_CONTAINS(campaign,R".*\|vb\|.*|.*\|vb|_vb|.*vb\||vb%|7Cvb|7cvb") THEN "TRUE"
+              ELSE "FALSE"
+          END AS VB,
+          CASE 
+              WHEN BFName IS NOT NULL AND date BETWEEN DateStart AND DateFinish THEN "TRUE"
+              ELSE "FALSE"
+          END AS BrandFormance,
+          CASE 
+              WHEN BFName IS NOT NULL AND date BETWEEN DateStart AND DateFinish THEN BFName
+              ELSE "NULL"
+          END AS BFName
+FROM (
+SELECT *
+FROM (
+SELECT t1.*,
+       t2.BFName, t2.DateStart, t2.DateFinish
+FROM (       
+------------------------------------------------------------------------------------------------------------------------------------------- 
+--РАСПРЕДЕЛЯЕМ РАСХОДЫ ПО КАЖДОЙ СТРОКЕ
+SELECT date, Sessions, Sessions*adCostBySession AS Cost, source, medium, campaign, TagNTB, adCost, TotalSessions, adCostBySession
+FROM (
+SELECT *, adCost/TotalSessions AS adCostBySession
+FROM (
+SELECT *,
+       SUM(Sessions) OVER (PARTITION BY date, source,	medium,	campaign) AS TotalSessions
+FROM (
+------------------------------------------------------------------------------------------------------------------------------------------- 
+--ДОБАВИЛИ РАСХОДЫ КОТОРЫЕ НЕ СМОГЛИ СМАТЧИТЬСЯ 
+SELECT date, Sessions, source, medium, campaign, TagNTB, adCost
+FROM (
+SELECT t1.date,	1 AS Sessions, t1.source, t1.medium,	t1.campaign, "yes" AS TagNTB, t1.adCost,
+       t2.sessionId
+FROM (       
+SELECT *
+FROM CPC_COST_PER_SESSIONS
+) AS t1
+LEFT JOIN (
+SELECT *, CONCAT(CAST(date AS STRING),source,medium,campaign) AS TrafConcat
+FROM CPC_SESSIONS
+--where extract(year from date)=2019 and extract(month from date)=3 and source="yandex" --!!!!!!!!!!!!!!!!!!!!!
+) AS t2
+ON t2.TrafConcat=t1.CostConcat
+) AS t1
+WHERE sessionId IS NULL
+------------------------------------------------------------------------------------------------------------------------------------------- 
+UNION ALL
+------------------------------------------------------------------------------------------------------------------------------------------- 
+--ДОБАВЛЕНИЕ ИДЕНТИФИКАТОРА NTB
+SELECT *
+FROM (
+SELECT date,
+       COUNT(sessionId) OVER (PARTITION BY date, source, medium, campaign, TagNTB) AS Sessions,
+       source, medium, campaign,	TagNTB, adCost
+FROM (       
+SELECT t1.*, IF(t2.SESNTB IS NULL,"yes",t2.SESNTB) AS TagNTB 
+FROM (    
+------------------------------------------------------------------------------------------------------------------------------------------- 
+--ОБЪЕДИНИЛИ ТРАФИК И РАСХОДЫ КОТОРЫЕ СМОГЛИ СМАТЧИТЬСЯ 
+SELECT t1.date,	t1.sessionId,	t1.source, t1.medium,	t1.campaign, t1.keyword,
+       t2.adCost--, t2.CostSessions, t2.source AS Csource,	t2.medium AS Cmedium, t2.campaign AS Ccampaign
+FROM (       
+SELECT *, CONCAT(CAST(date AS STRING),source,medium,campaign) AS TrafConcat
+FROM CPC_SESSIONS
+--where extract(year from date)=2019 and extract(month from date)=3 and source="yandex" --!!!!!!!!!!!!!!!!!!!!!
+) AS t1
+LEFT JOIN (
+SELECT *
+FROM CPC_COST_PER_SESSIONS
+) AS t2
+ON t1.TrafConcat=t2.CostConcat
+------------------------------------------------------------------------------------------------------------------------------------------- 
+) AS t1
+LEFT JOIN (  
+SELECT *  
+FROM NTB    
+) AS t2  
+ON t1.sessionId=t2.TsessionId
+) AS t1
+) AS t2
+GROUP BY date, Sessions, source, medium, campaign, TagNTB, adCost
+------------------------------------------------------------------------------------------------------------------------------------------- 
+) AS t1
+) AS t2
+) AS t3
+------------------------------------------------------------------------------------------------------------------------------------------- 
+) AS t1
+LEFT JOIN (
+SELECT *
+FROM CPC_BF_SESSIONS
+) AS t2
+ON t1.campaign=t2.campaign AND t1.date BETWEEN t2.DateStart AND t2.DateFinish
+) AS t1
+GROUP BY date, Sessions, Cost, source, medium, campaign, TagNTB, adCost, TotalSessions, adCostBySession, BFName, DateStart, DateFinish
+
+) AS t1
+) AS t2
+) AS t3
+) AS t4
+GROUP BY date, Month, Year, Sessions, adCost, source, medium, Product, TagNTB, VB, BrandFormance, BFName
+------------------------------------------------------------------------------------------------------------------------------------------- 
+--) AS t1
+--) AS t2
+------------------------------------------------------------------------------------------------------------------------------------------- 
+) AS t1
+) AS t2
+GROUP BY date, Month, Year, medium, Product, TagNTB, VB, BrandFormance, BFName
+) AS t3
+),
+CPC_LEADS_DATA AS (--<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+------------------------------------------------------------------------------------------------------------------------------------------- 
+--УНИКАЛИЗИРУЕМ ПО LEADID
+SELECT EXTRACT(MONTH FROM Date) AS Month, EXTRACT(YEAR FROM Date) AS Year, Date, LeadID, ProductLine, Product, Medium, 
+       UTM_CAMPAIGN AS Campaign, utm_term AS Keyword, NTB, VB, BrandFormance,
+       StatusLead, ApprovalLead
+FROM (
+SELECT Date, LeadID, ProductLine, Product, Medium, UTM_CAMPAIGN, utm_term, NTB, VB, BrandFormance,
+       StatusLead, ApprovalLead,
+       ROW_NUMBER() OVER (PARTITION BY LeadID) AS ROW
+FROM (
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ОБРАБОТКА ЛИДОВ С LEADID       
+SELECT DATE(LeadDate) AS Date, leadid AS LeadID, PRODUCT_LINE AS ProductLine, 
+       CASE 
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Credit') THEN 'CC'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Debit|IPayroll|MasterCard|Gold') THEN 'DC'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Premium Direct') THEN 'Premium Product'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Mortgage') THEN 'ML / ML REF'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Personal Loans') THEN 'PL / PL REF / PL Auto'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Saving Accounts') THEN 'SA'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Standard Term Deposits') THEN 'TD'           
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'RKO') THEN 'SME'
+       ELSE 'Other' END AS Product,       
+       UTM_MEDIUM AS Medium, UTM_CAMPAIGN, utm_term,
+       NTB, STATUS AS StatusLead, APPROVAL AS ApprovalLead,
+       CASE 
+           WHEN REGEXP_CONTAINS(UTM_CAMPAIGN,R".*\|vb\|.*|.*\|vb|_vb|.*vb\||vb%|7Cvb|7cvb") THEN "TRUE"           
+       ELSE 'FALSE' END AS VB,
+          CASE 
+              WHEN REGEXP_CONTAINS(UTM_CAMPAIGN,R".*\|bf\|.*|_bf|brandfrm") THEN "TRUE"
+              ELSE "FALSE"
+          END AS BrandFormance       
+FROM `raiffeisen-owox.Orders_CRM.CRM_orders`
+WHERE UTM_MEDIUM ='cpc'
+--      AND REGEXP_MATCH(UTM_SOURCE,R'yandex$|google$|mytarget|facebook|dbm|astraone')      
+--      AND CAST(DATE(LeadDate) AS STRING) BETWEEN '2018-11-01' AND '2018-11-30'
+      AND CAST(DATE(LeadDate) AS STRING) BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-2 AS STRING),'-01-01') AND CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING)
+--      AND REGEXP_CONTAINS(PRODUCT_LINE,r'Personal Loans')
+      AND leadid IS NOT NULL
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+UNION ALL
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ОБРАБОТКА ЛИДОВ БЕЗ LEADID
+SELECT Date, CAST(LeadID AS STRING) AS LeadID, ProductLine, Product, Medium, UTM_CAMPAIGN, utm_term, NTB, StatusLead, ApprovalLead, VB, BrandFormance
+FROM (       
+SELECT Date,
+       ROW_NUMBER() OVER (PARTITION BY LeadID) AS LeadID,
+       ProductLine, Product, Medium, UTM_CAMPAIGN, utm_term, NTB, StatusLead, ApprovalLead, VB, BrandFormance
+FROM (       
+SELECT DATE(LeadDate) AS Date, leadid AS LeadID, PRODUCT_LINE AS ProductLine, 
+       CASE 
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Credit') THEN 'CC'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Debit|IPayroll|MasterCard|Gold') THEN 'DC'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Premium Direct') THEN 'Premium Product'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Mortgage') THEN 'ML / ML REF'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Personal Loans') THEN 'PL / PL REF / PL Auto'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Saving Accounts') THEN 'SA'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Standard Term Deposits') THEN 'TD'           
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'RKO') THEN 'SME'
+       ELSE 'Other' END AS Product, 
+       CASE 
+           WHEN REGEXP_CONTAINS(UTM_CAMPAIGN,r'.*\|vb\|.*|.*\|vb|_vb|.*vb\||vb%|7Cvb|7cvb') THEN 'TRUE'
+       ELSE 'FALSE' END AS VB,
+          CASE 
+              WHEN REGEXP_CONTAINS(UTM_CAMPAIGN,R".*\|bf\|.*|_bf|brandfrm") THEN "TRUE"
+              ELSE "FALSE"
+          END AS BrandFormance,         
+       UTM_MEDIUM AS Medium, UTM_CAMPAIGN, utm_term,
+       NTB, STATUS AS StatusLead, APPROVAL AS ApprovalLead 
+FROM `raiffeisen-owox.Orders_CRM.CRM_orders`
+WHERE UTM_MEDIUM ='cpc'
+--      AND REGEXP_MATCH(UTM_SOURCE,R'yandex$|google$|mytarget|facebook|dbm|astraone')      
+--      AND CAST(DATE(LeadDate) AS STRING) BETWEEN '2018-11-01' AND '2018-11-30'
+      AND CAST(DATE(LeadDate) AS STRING) BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-2 AS STRING),'-01-01') AND CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING)
+--      AND REGEXP_CONTAINS(PRODUCT_LINE,r'Personal Loans')
+      AND leadid IS NULL
+) AS t0
+) AS t1
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+) AS t1
+) AS t2
+WHERE ROW=1
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+),
+CPC_BF_LEADS AS (--<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ИДЕНТИФИЦИРУЕМ ЛИДЫ С ПРИЗНАК BRANDFORMANCE
+SELECT t1.*,
+       t2.BFName, t2.DateStart, t2.DateFinish
+FROM (
+SELECT *
+FROM CPC_LEADS_DATA
+) AS t1
+INNER JOIN (
+SELECT *
+FROM CPC_BF
+) AS t2
+ON REGEXP_CONTAINS(t1.Keyword,t2.CampaignID)
+   AND t1.date BETWEEN t2.DateStart AND t2.DateFinish
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------   
+),
+CPC_LEADS_PIVOT AS (--<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+------------------------------------------------------------------------------------------------------------------------------------------- 
+-- НОВЫЙ ФОРМАТ ДАШБОРДА
+SELECT date, Month, Year,
+       SUM(Sessions) AS Sessions,
+       SUM(Leads) AS Leads, 
+       SUM(QLeads) AS QLeads, 
+       SUM(Issues) AS Issues,
+       SUM(Cost) AS Cost,  
+       NTB AS TagNTB, Product, Medium, VB, BrandFormance, BFName, "FORM_LEAD" AS API
+FROM (
+SELECT Date, Month, Year,
+       0 AS Sessions,
+       1 AS Leads,
+       0 AS QLeads,
+       0 AS Issues,
+       0 AS Cost,       
+       NTB, Product, Medium, VB, BrandFormance, BFName
+FROM (
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ОБРАБАТЫВАЕМ ПОЛУЧЕННЫЙ СПИСОК
+SELECT *
+FROM (
+SELECT Month,	Year,	Date,	LeadID,	ProductLine, Product, Medium, Campaign, Keyword, NTB, VB,
+       CASE 
+           WHEN BFName IS NULL THEN "FALSE"
+           ELSE "TRUE"
+       END AS BrandFormance, 
+       CASE 
+           WHEN BFName IS NULL THEN "NULL"
+           ELSE BFName
+       END AS BFName    
+FROM (       
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--УДАЛЯЕМ ИЗ ОБЩЕГО СПИКА ЛИДЫ С ПРИЗНАКОМ BRANDFORMANCE
+SELECT *
+FROM (
+SELECT t1.*,
+       t2.BFName, t2.DateStart, t2.DateFinish
+FROM (
+SELECT *
+FROM CPC_LEADS_DATA
+) AS t1
+LEFT JOIN (
+SELECT *
+FROM CPC_BF_LEADS
+) AS t2
+ON t1.LeadID=t2.LeadID
+) t1 WHERE BFName IS NULL
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------   
+UNION ALL
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------  
+--ДОБАВЛЯЕМ ЛИДЫ С ПРИЗНАКОМ BRANDFORMANCE
+SELECT *
+FROM CPC_BF_LEADS
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------  
+) AS t1
+) AS t2
+GROUP BY Month,	Year,	Date,	LeadID,	ProductLine, Product, Medium,	Campaign,	Keyword, NTB,	VB,	BrandFormance, BFName
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------     
+--) AS t0
+--) AS t1
+--GROUP BY Month,	Year,	Sessions,	Leads, QLeads, Issues, Cost, NTB,	Product, Medium, VB, BrandFormance, BFName
+--ORDER BY Year, Month, Product
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------ 
+) AS t1
+) AS t2
+GROUP BY date, Month, Year, Medium, Product, TagNTB, VB, BrandFormance, BFName
+),
+CPC_QLEADS_DATA AS (--<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+----------------------------------------------------------------------------------------------------------------------------------------
+SELECT *
+FROM (
+SELECT *,
+       IF((REGEXP_CONTAINS(Product,r'PL|CC') and (StatusLead = 'lead' or StatusLead = 'open' or StatusLead = 'deal') and (ApprovalLead = 'pending' or
+           ApprovalLead = 'approved' or ApprovalLead = 'Approved' or ApprovalLead = 'approval' or ApprovalLead = 'Approval')),'QLead',
+       IF((REGEXP_CONTAINS(Product,r'DC|PD') and (StatusLead = 'open' or StatusLead = 'delivered' or StatusLead = 'active')),'QLead',
+       IF((REGEXP_CONTAINS(Product,r'ML') and (StatusLead = 'application' or StatusLead = 'deal')),'QLead',            
+       IF((REGEXP_CONTAINS(Product,r'SA|TD') and StatusLead = 'open'),'QLead',
+       IF((REGEXP_CONTAINS(Product,r'SME') and REGEXP_CONTAINS(StatusLead,R'Qlead|Scoring|Arrest_check|Application|Open')),'QLead',         
+       IF(Product = 'Other' and
+         (StatusLead = 'lead' or StatusLead = 'open' or StatusLead = 'deal' or StatusLead = 'delivered' or StatusLead = 'active') and 
+         (ApprovalLead = 'pending' or ApprovalLead = 'approved' or ApprovalLead = 'Approved' or ApprovalLead = 'approval' or ApprovalLead = 'Approval'),
+          'QLead','not')))))) as QLead             
+FROM (
+SELECT *
+FROM CPC_LEADS_DATA
+) AS t1
+) AS t2
+WHERE QLead = 'QLead'
+----------------------------------------------------------------------------------------------------------------------------------------
+),
+CPC_QLEADS_PIVOT AS (--<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+------------------------------------------------------------------------------------------------------------------------------------------- 
+-- НОВЫЙ ФОРМАТ ДАШБОРДА
+SELECT Date, Month, Year,
+       SUM(Sessions) AS Sessions,
+       SUM(Leads) AS Leads,
+       SUM(QLeads) AS QLeads,
+       SUM(Issues) AS Issues,
+       SUM(Cost) AS Cost,       
+       NTB AS TagNTB, Product, Medium, VB, BrandFormance, BFName, "FORM_LEAD" AS API
+FROM (
+SELECT Date, Month, Year,
+       0 AS Sessions,
+       0 AS Leads,
+       1 AS QLeads,
+       0 AS Issues,
+       0 AS Cost,       
+       NTB, Product, Medium, VB, BrandFormance, BFName
+FROM (
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ОБРАБАТЫВАЕМ ПОЛУЧЕННЫЙ СПИСОК
+SELECT *
+FROM (
+SELECT Month,	Year,	Date,	LeadID,	ProductLine, Product, Medium, Campaign, Keyword, NTB, VB,
+       CASE 
+           WHEN BFName IS NULL THEN "FALSE"
+           ELSE "TRUE"
+       END AS BrandFormance,
+       CASE 
+           WHEN BFName IS NULL THEN "NULL"
+           ELSE BFName
+       END AS BFName         
+FROM (       
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--УДАЛЯЕМ ИЗ ОБЩЕГО СПИКА ЛИДЫ С ПРИЗНАКОМ BRANDFORMANCE
+SELECT Month,	Year,	Date,	LeadID,	ProductLine, Product,	Medium,	Campaign,	Keyword, NTB,	VB,	BrandFormance, StatusLead, ApprovalLead, BFName, DateStart,	DateFinish
+FROM (
+SELECT t1.*,
+       t2.BFName, t2.DateStart, t2.DateFinish
+FROM (
+SELECT *
+FROM CPC_QLEADS_DATA
+) AS t1
+LEFT JOIN (
+SELECT *
+FROM CPC_BF_LEADS
+) AS t2
+ON t1.LeadID=t2.LeadID
+) t1 WHERE BFName IS NULL
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------   
+UNION ALL
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------  
+--ДОБАВЛЯЕМ ЛИДЫ С ПРИЗНАКОМ BRANDFORMANCE
+SELECT *
+FROM CPC_BF_LEADS
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------  
+) AS t1
+) AS t2
+GROUP BY Month,	Year,	Date,	LeadID,	ProductLine, Product, Medium,	Campaign,	Keyword, NTB,	VB,	BrandFormance, BFName
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------     
+) AS t1
+) AS t2
+GROUP BY date, Month, Year,	Medium, Product, TagNTB, VB, BrandFormance, BFName
+)
+--AFI_ISSUES_PIVOT AS (--<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+--)
+
+
+
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+-----------------------------------------------            START QUERY           ----------------------------------------------
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+--------------------------------------------------------------------------------------------------------------------------------
+--- НЕ ПРАВИЛЬНО СЧИТАЮТСЯ QLEADS
+SELECT Year, SUM(Sessions) AS Sessions, SUM(Leads) AS Leads, SUM(QLeads) AS QLeads, SUM(Issues) AS Issues, SUM(Cost) AS Cost,
+       TagNTB,	Product, Medium, VB, BrandFormance, BFName, API
+FROM (       
+SELECT *
+FROM CPC_SESSIONS_PIVOT
+UNION ALL
+SELECT *
+FROM CPC_LEADS_PIVOT
+UNION ALL
+SELECT *
+FROM CPC_QLEADS_PIVOT
+--UNION ALL
+--SELECT *
+--FROM AFI_ISSUES_PIVOT
+) AS t1
+GROUP BY Year, TagNTB,	Product, Medium, VB, BrandFormance, BFName, API

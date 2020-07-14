@@ -1,0 +1,8 @@
+SELECT
+LeadDate, PRODUCT_LINE, NTB,  STATUS,  APPROVAL, UTM_CAMPAIGN, UTM_MEDIUM, UTM_SOURCE, leadid, SALE_CH_CODE, PROCESSING_CHANNEL
+FROM(
+  SELECT *
+  FROM `raiffeisen-owox.Orders_CRM.crm_orders_2019_base` BASE
+  LEFT JOIN ( SELECT * FROM `raiffeisen-owox.Orders_CRM.crm_orders_2019_other` STATUS) USING (leadid)
+)
+WHERE PRODUCT_LINE IN ('Debit Cards','Credit Cards','Personal Loans')

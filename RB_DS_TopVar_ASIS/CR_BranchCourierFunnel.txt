@@ -1,0 +1,10 @@
+SELECT 
+EXTRACT(date FROM LeadDate ) date,
+`raiffeisen-owox.Common_query.getProductCRM`(PRODUCT_LINE) PRODUCT,
+NTB, STATUS, APPROVAL, UTM_CAMPAIGN, 
+`raiffeisen-owox.Common_query.getMediumCRM`(UTM_MEDIUM) MEDIUM, 
+`raiffeisen-owox.Common_query.getSourceUTM`(UTM_SOURCE) SOURCE, leadid, SALE_CH_CODE,
+`raiffeisen-owox.Common_query.getProcessFunnel`(SALE_CH_CODE, PROCESSING_CHANNEL) PROCESSING_CHANNEL,
+`raiffeisen-owox.Common_query.isQLead`(`raiffeisen-owox.Common_query.getProductCRM`(PRODUCT_LINE),STATUS, APPROVAL) isQLead,
+`raiffeisen-owox.Common_query.isIssue`(`raiffeisen-owox.Common_query.getProductCRM`(PRODUCT_LINE),STATUS, APPROVAL) isIssue
+FROM `raiffeisen-owox.RB_DS_TopVar_ASIS.MD_CRM_orders`

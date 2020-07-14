@@ -1,0 +1,126 @@
+SELECT *
+FROM (
+SELECT Date, sessionId,	Source,	Medium,	HitTime, HitTimeLead, eventAction,
+       CASE 
+           WHEN REGEXP_MATCH(eventAction,R"CASH_DEPOSIT_REQUEST|CASH_DEPOSIT_SHORT|DEPOSIT_PIF_PENSION_REQUEST") THEN "SA"
+           WHEN REGEXP_MATCH(eventAction,R"SAVING_ACCOUNT_SHORT|SAVINGS_ACCOUNT_REQUEST") THEN "SA"
+           WHEN REGEXP_MATCH(eventAction,R"metroLeadSuccessMos|metroLeadSuccessReg|metroLeadSuccessSmall") THEN "SME"           
+           WHEN REGEXP_MATCH(eventAction,R"rkoLeadSuccessMos|rkoLeadSuccessOnlineKass|rkoLeadSuccessReg|rkoPhoneSuccessMos|rkoPhoneSuccessReg|sme_reg_private_office") THEN "SME"           
+           WHEN REGEXP_MATCH(eventAction,R"rkoMasterCard") THEN "SME"   
+           WHEN REGEXP_MATCH(eventAction,R"MORTGAGE_CONSULTATION_CALL_REQUEST|MORTGAGE_CONSULTATION_REQUEST") THEN "ML"   
+           WHEN REGEXP_MATCH(eventAction,R"CONSUMER_LOAN_FORM|CONSUMER_LOAN_FULL_FORM") THEN "PL"   
+           WHEN REGEXP_MATCH(eventAction,R"CREDIT_CARD_FORM|CREDIT_CARD_FULL_FORM") THEN "CC"
+           WHEN REGEXP_MATCH(eventAction,R"DEBIT_CARD_FULL_FORM") THEN "DC"           
+           ELSE "Other" 
+       END AS LeadProduct,
+       CASE 
+           WHEN REGEXP_MATCH(eventAction,R"CASH_DEPOSIT_REQUEST|CASH_DEPOSIT_SHORT|DEPOSIT_PIF_PENSION_REQUEST") THEN "SA Deposit"
+           WHEN REGEXP_MATCH(eventAction,R"SAVING_ACCOUNT_SHORT|SAVINGS_ACCOUNT_REQUEST") THEN "SA Savings"
+           WHEN REGEXP_MATCH(eventAction,R"metroLeadSuccessMos|metroLeadSuccessReg|metroLeadSuccessSmall") THEN "SME Metro"           
+           WHEN REGEXP_MATCH(eventAction,R"rkoLeadSuccessMos|rkoLeadSuccessOnlineKass|rkoLeadSuccessReg|rkoPhoneSuccessMos|rkoPhoneSuccessReg|sme_reg_private_office") THEN "SME"           
+           WHEN REGEXP_MATCH(eventAction,R"rkoMasterCard") THEN "SME MasterCard"   
+           WHEN REGEXP_MATCH(eventAction,R"MORTGAGE_CONSULTATION_CALL_REQUEST|MORTGAGE_CONSULTATION_REQUEST") THEN "ML"   
+           WHEN REGEXP_MATCH(eventAction,R"CONSUMER_LOAN_FORM|CONSUMER_LOAN_FULL_FORM") THEN "PL"   
+           WHEN REGEXP_MATCH(eventAction,R"CREDIT_CARD_FORM|CREDIT_CARD_FULL_FORM") THEN "CC"
+           WHEN REGEXP_MATCH(eventAction,R"DEBIT_CARD_FULL_FORM") THEN "DC"           
+           ELSE "Other" 
+       END AS LeadSubProduct,
+       Host, PagePath, Product, SubProduct,	RowProd, SUB, RowNum, RowMax,
+       IF(RowNum=1 OR RowNum=RowMax OR SUB="SUBPROD","NOT DEL","DEL") AS ForDel
+FROM (
+SELECT *,
+       MAX(RowNum) OVER (PARTITION BY sessionId) AS RowMax
+FROM (       
+SELECT t5.date AS Date, t5.sessionId AS sessionId, t5.Source AS Source,	t5.Medium AS Medium,	t5.HitTime AS HitTime, t6.HitTimeLead AS HitTimeLead, t6.eventAction AS eventAction,
+       t5.Host AS Host,	t5.PagePath AS PagePath, t5.Product AS Product, t5.SubProduct AS SubProduct, t5.RowProd AS RowProd,
+       IF(Product="SME",
+                        IF(LEFT(Product,3)=SubProduct,"PROD","SUBPROD"),
+                        IF(LEFT(Product,2)=SubProduct,"PROD","SUBPROD")
+                        ) AS SUB,
+       ROW_NUMBER() OVER (PARTITION BY t5.sessionId ORDER BY t5.HitTime) AS RowNum,      
+FROM (
+SELECT date, sessionId,	Source,	Medium,	HitTime, Host,	PagePath,	Product, SubProduct, RowProd, RowNum,
+       MAX(RowNum) OVER (PARTITION BY sessionId) AS RowMax
+FROM (
+SELECT *,
+       ROW_NUMBER() OVER (PARTITION BY sessionId ORDER BY HitTime) AS RowNum,       
+FROM (
+SELECT *,
+       IF(Product="Other",NULL,Product) AS RowProd
+FROM (
+SELECT date, sessionId,	Source,	Medium,	HitTime, Host,	PagePath,	Product, SubProduct,
+FROM (
+SELECT date, sessionId, trafficSource.source AS Source, trafficSource.medium AS Medium,
+       hits.time AS HitTime, hits.page.hostname AS Host, hits.page.pagePath AS PagePath,
+       CASE
+           WHEN REGEXP_MATCH(hits.page.pagePath,R"^\/retail\/cards\/credit\/.*|^\/premium_service\/premiumbanking\/products\/cards\/credit\/.*|^\/promo\/vsesrazu-cc\/.*") THEN "CC"
+           WHEN REGEXP_MATCH(hits.page.pagePath,R"^\/premium_service\/premiumbanking\/products\/cards\/debit\/.*|^\/premium_service\/premiumdirect\/cards\/debit\/.*|^\/retail\/cards\/debit\/.*|^\/retail\/package\/.*|^\/promo\/msgold'/.*|^\/promo\/vsesrazu-dc\/.*") THEN "DC"
+           WHEN REGEXP_MATCH(hits.page.pagePath,R"^\/retail\/insurance\/.*") THEN "Insurance"
+           WHEN REGEXP_MATCH(hits.page.pagePath,R"^\/premium_service\/premiumbanking\/products\/loans\/pokupka-nedvizhimosti\/.*|^\/premium_service\/premiumdirect\/loans\/pokupka-nedvijimosti\/.*|^\/promo\/ipoteka\/.*|^\/promo\/mortgage\/.*|^\/retail\/mortgageloans.*|^\/retail\/mortgageloans\/.*") THEN "ML / ML REF" 
+           WHEN REGEXP_MATCH(hits.page.pagePath,R"^\/premium_service\/premiumbanking\/products\/loans\/kredity-na-lyubyye-tseli\/.*|^\/premium_service\/premiumbanking\/products\/loans\/pledge\/.*|^\/premium_service\/premiumdirect\/loans\/kredit-na-lubie-celi\/.*|^\/premium_service\/premiumdirect\/loans\/pledge\/.*|^\/promo\/pl\/.*|^\/retail\/consumerloans\/.*|^\/retail\/paying_off\/.*") THEN "PL / PL REF / PL Auto"
+           WHEN REGEXP_MATCH(hits.page.pagePath,R"^\/premium_service\/premiumbanking\/products\/investment\/.*|^\/premium_service\/premiumdirect\/razmeshhenie-sredstv\/.*|^\/retail\/deposit_investing\/.*|^\/promo\/deposit\/.*|^\/promo\/savings\/.*") THEN "SA"
+           WHEN REGEXP_MATCH(hits.page.pagePath,R"^\/business.*|^\/business\/.*|^\/corporate\/.*|^\/financial\/.*|^\/promo\/rko\/.*") THEN "SME"
+           ELSE "Other"
+       END AS Product,
+       CASE
+           WHEN REGEXP_MATCH(hits.page.pagePath,R"^\/retail\/cards\/credit\/110-days\/.*") THEN "CC 110 days"
+           WHEN REGEXP_MATCH(hits.page.pagePath,R"^\/promo\/vsesrazu-cc\/.*|^\/retail\/cards\/credit\/visa-all-at-once\/.*") THEN "CC Vse Srazu"    
+           WHEN REGEXP_MATCH(hits.page.pagePath,R"^\/retail\/cards\/credit\/.*|^\/premium_service\/premiumbanking\/products\/cards\/credit\/.*|^\/promo\/vsesrazu-cc\/.*") THEN "CC"
+           
+           WHEN REGEXP_MATCH(hits.page.pagePath,R"^\/premium_service\/premiumbanking\/products\/cards\/debit\/buyandfly\/.*|^\/premium_service\/premiumdirect\/cards\/debit\/buyandfly\/.*|^\/retail\/cards\/debit\/buyandfly\/.*") THEN "DC Buy&Fly"     
+           WHEN REGEXP_MATCH(hits.page.pagePath,R"^\/promo\/msgold\/.*|^\/retail\/cards\/debit\/mc-gold-package\/.*") THEN "DC Gold"     
+           WHEN REGEXP_MATCH(hits.page.pagePath,R"^\/promo\/vsesrazu-dc\/.*|^\/retail\/cards\/debit\/visa-all-at-once\/.*") THEN "DC Vse Srazu"  
+           WHEN REGEXP_MATCH(hits.page.pagePath,R"^\/premium_service\/premiumbanking\/products\/cards\/debit\/.*|^\/premium_service\/premiumdirect\/cards\/debit\/.*|^\/retail\/cards\/debit\/.*|^\/retail\/package\/.*|^\/promo\/msgold'/.*|^\/promo\/vsesrazu-dc\/.*") THEN "DC"
+           
+           WHEN REGEXP_MATCH(hits.page.pagePath,R"^\/retail\/insurance\/.*") THEN "Other" 
+           
+           WHEN REGEXP_MATCH(hits.page.pagePath,R"^\/promo\/mortgage\/refinance\/.*|^\/retail\/mortgageloans\/refinansirovanie-kreditov-inyh-bankov\/.*|^\/retail\/mortgageloans\/refinansirovanie-valjutnoj-ipoteki\/.*") THEN "ML Refinans"     
+           WHEN REGEXP_MATCH(hits.page.pagePath,R"^\/promo\/mortgage\/secondary\/.*|^\/retail\/mortgageloans\/kottedzh-na-vtorichnom-rynke\/.*|^\/retail\/mortgageloans\/kvartira-na-vtorichnom-rynke\/.*") THEN "ML Secondary"    
+           WHEN REGEXP_MATCH(hits.page.pagePath,R"^\/premium_service\/premiumbanking\/products\/loans\/pokupka-nedvizhimosti\/.*|^\/premium_service\/premiumdirect\/loans\/pokupka-nedvijimosti\/.*|^\/promo\/ipoteka\/.*|^\/promo\/mortgage\/.*|^\/retail\/mortgageloans.*|^\/retail\/mortgageloans\/.*") THEN "ML" 
+          
+           WHEN REGEXP_MATCH(hits.page.pagePath,R"^\/promo\/pl\/auto\/.*|^\/retail\/consumerloans\/auto\/.*|^\/retail\/consumerloans\/used-auto\/.*") THEN "PL Auto Credit" 
+           WHEN REGEXP_MATCH(hits.page.pagePath,R"^\/promo\/pl\/affiliate_refin\/.*|^\/promo\/pl\/refinance\/.*|^\/retail\/consumerloans\/refinancing\/.*") THEN "PL Refinans"    
+           WHEN REGEXP_MATCH(hits.page.pagePath,R"^\/premium_service\/premiumbanking\/products\/loans\/kredity-na-lyubyye-tseli\/.*|^\/premium_service\/premiumbanking\/products\/loans\/pledge\/.*|^\/premium_service\/premiumdirect\/loans\/kredit-na-lubie-celi\/.*|^\/premium_service\/premiumdirect\/loans\/pledge\/.*|^\/promo\/pl\/.*|^\/retail\/consumerloans\/.*|^\/retail\/paying_off\/.*") THEN "PL"    
+
+           WHEN REGEXP_MATCH(hits.page.pagePath,R"^\/promo\/deposit\/.*|^\/retail\/deposit_investing\/deposit\/.*") THEN "SA Deposit" 
+           WHEN REGEXP_MATCH(hits.page.pagePath,R"^\/promo\/savings\/.*|^\/retail\/deposit_investing\/savings_account.*|^\/retail\/deposit_investing\/savings_account\/.*") THEN "SA Savings" 
+           WHEN REGEXP_MATCH(hits.page.pagePath,R"^\/premium_service\/premiumbanking\/products\/investment\/.*|^\/premium_service\/premiumdirect\/razmeshhenie-sredstv\/.*|^\/retail\/deposit_investing\/.*|^\/promo\/deposit\/.*|^\/promo\/savings\/.*") THEN "SA"           
+
+           WHEN REGEXP_MATCH(hits.page.pagePath,R"^\/business\/cards\/metro.*|^\/business\/cards\/metro\/.*|^\/promo\/rko\/metro_msk\/.*|^\/promo\/rko\/metro_reg\/.*|^\/promo\/rko\/metro_small\/.*") THEN "SME Metro"           
+           WHEN REGEXP_MATCH(hits.page.pagePath,R"^\/business\/r-dealer\/.*|^\/business\/r-kassa\/.*") THEN "SME Online Kassa"     
+           WHEN REGEXP_MATCH(hits.page.pagePath,R"^\/business\/acquiring\/.*|^\/corporate\/management\/acquiring\/.*|^\/promo\/rko\/online-acquiring\/.*") THEN "SME Trade Acq"     
+           WHEN REGEXP_MATCH(hits.page.pagePath,R"^\/business.*|^\/business\/.*|^\/corporate\/.*|^\/financial\/.*|^\/promo\/rko\/.*") THEN "SME"           
+           ELSE "Other"
+       END AS SubProduct,
+//FROM [raiffeisen-owox:OWOXBI_Streaming.session_streaming_20181014] --!!!!!!!!!
+FROM TABLE_DATE_RANGE([raiffeisen-owox:OWOXBI_Streaming.session_streaming_],
+                      TIMESTAMP(CONCAT(CAST(YEAR(DATE_ADD(CURRENT_TIMESTAMP(), -1, "DAY"))-1 AS STRING),"-","01","-","01")),
+                      DATE_ADD(CURRENT_TIMESTAMP(), -1, "DAY"))
+WHERE REGEXP_MATCH(trafficSource.medium,R"organic|referral|(none)") AND REGEXP_MATCH(hits.page.hostname,R"^www\.raiffeisen\.ru") AND hits.type="pageview"
+//      AND REGEXP_MATCH(sessionId,R"1001113478.1506068251_1506068902321|1000920519.1519730290_1519734149627") 
+) AS t1
+) AS t2
+) AS t3 WHERE RowProd IS NOT NULL
+) AS t4
+) AS t5
+
+LEFT JOIN (
+
+SELECT sessionId, hits.time AS	HitTimeLead, hits.eventInfo.eventAction AS eventAction 
+//FROM [raiffeisen-owox:OWOXBI_Streaming.session_streaming_20181014] --!!!!!!!!!
+FROM TABLE_DATE_RANGE([raiffeisen-owox:OWOXBI_Streaming.session_streaming_],
+                      TIMESTAMP(CONCAT(CAST(YEAR(DATE_ADD(CURRENT_TIMESTAMP(), -1, "DAY"))-1 AS STRING),"-","01","-","01")),
+                      DATE_ADD(CURRENT_TIMESTAMP(), -1, "DAY"))
+WHERE REGEXP_MATCH(trafficSource.medium,R"organic|referral|(none)") AND REGEXP_MATCH(hits.page.hostname,R"^www\.raiffeisen\.ru") AND hits.type="event"
+      AND hits.eventInfo.eventCategory='send_ok'
+      AND REGEXP_MATCH(hits.eventInfo.eventAction,R'^rko|^metro|^24-7|sme_reg_private_office|CONSUMER_LOAN|DEBIT_CARD|DEPOSIT|SAVING|CREDIT_CARD|MORTGAGE|mortgage')
+//      AND REGEXP_MATCH(sessionId,R"1001113478.1506068251_1506068902321|1000920519.1519730290_1519734149627")       
+) AS t6   
+
+ON t6.sessionId=t5.sessionId
+WHERE t5.HitTime<=t6.HitTimeLead
+
+) AS t7
+) AS t8
+) AS t9 
+WHERE ForDel="NOT DEL"

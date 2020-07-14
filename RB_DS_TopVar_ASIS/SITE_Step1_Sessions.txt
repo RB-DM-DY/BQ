@@ -1,0 +1,310 @@
+SELECT Month, Year, 
+       SUM(Sessions) AS Sessions, 
+       SUM(Leads) AS Leads, 
+       SUM(QLeads) AS QLeads,
+       SUM(Issues) AS Issues, 
+       SUM(Cost) AS Cost, "organic" AS Medium, Product, TagNTB
+FROM (
+
+SELECT Month, Year, Sessions, Leads, QLeads, Issues, CAST(ROUND(Sessions*(CostPerMonth/SessionsByMedium),0) AS INT64) AS Cost, 
+       Medium, Product, TagNTB
+FROM (
+
+SELECT Month, Year,
+       COUNT(sessionId) OVER (PARTITION BY Year, Month, Medium, Product, TagNTB) AS Sessions,
+       Leads, QLeads, Issues, Cost, CostPerMonth,    
+       COUNT(sessionId) OVER (PARTITION BY Year, Month, Medium) AS SessionsByMedium,       
+       Medium, Product, TagNTB,
+       ROW_NUMBER() OVER (PARTITION BY Month,	Year, Medium, Product, TagNTB) AS ROW       
+FROM (
+
+SELECT Date, EXTRACT(MONTH FROM Date) AS Month, EXTRACT(YEAR FROM Date) AS Year, sessionId,  
+       Sessions, Leads, QLeads, Issues, Cost, CostPerMonth, Medium, Product, TagNTB
+FROM (
+
+SELECT Date, sessionId, Sessions, Leads, QLeads, Issues, Cost, CostPerMonth, Medium, Product, TagNTB
+FROM (
+
+SELECT TRC.Date AS Date, TRC.sessionId AS sessionId, TRC.Sessions AS Sessions, TRC.Leads AS Leads, TRC.QLeads AS QLeads, TRC.Issues AS Issues, TRC.Cost AS Cost,
+       TRC.CostPerMonth AS CostPerMonth, TRC.Medium AS Medium, TRC.Product AS Product, IF(NTB.SESNTB IS NULL,'yes',NTB.SESNTB) AS TagNTB,
+       ROW_NUMBER() OVER (PARTITION BY sessionId) AS ROW
+FROM (
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+SELECT Date, sessionId, Sessions, Leads, QLeads, Issues, Cost, CostPerMonth, Medium, Product
+FROM (
+
+SELECT Date, sessionId,
+       COUNT(sessionId) AS Sessions,
+       0 AS Leads,
+       0 AS QLeads,
+       0 AS Issues,
+       0 AS Cost,
+--//       DATEDIFF(TIMESTAMP(CONCAT(CAST(YEAR(Date) AS STRING),"-","12","-",CAST(32 - DAY(DATE_ADD(UTC_USEC_TO_MONTH(PARSE_UTC_USEC(DATE(TIMESTAMP(CONCAT(CAST(YEAR(Date) AS STRING),"-","12","-","01"))))),31,'DAY')) AS STRING))),TIMESTAMP(CONCAT(CAST(YEAR(Date) AS STRING),"-","01","-","01"))) AS DayInYear,
+--//       32 - DAY(DATE_ADD(UTC_USEC_TO_MONTH(PARSE_UTC_USEC(DATE(TIMESTAMP(CONCAT(CAST(YEAR(Date) AS STRING),"-","12","-","01"))))),31,'DAY')) as DaysInMonth,
+
+       IF(Medium="organic",
+       IF(EXTRACT(MONTH FROM Date)=EXTRACT(MONTH FROM DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY)) AND EXTRACT(YEAR FROM Date)=EXTRACT(YEAR FROM DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY)),
+          ROUND((1500000/12)/(32-EXTRACT(DAY FROM DATE_ADD(DATE_TRUNC(CAST(Date AS DATE), MONTH), INTERVAL 31 DAY)))*EXTRACT(DAY FROM DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY)),0),
+          ROUND(1500000/12,0)),0) AS CostPerMonth, 
+
+       Source, Medium,
+       IF(SProduct IS NULL,hitNumber,ShitNumber) AS hitNumber,
+       Host,
+       IF(SProduct IS NULL,PagePath,SPagePath) AS PagePath,
+       IF(SProduct IS NULL,Product,SProduct) AS Product,
+       IF(SProduct IS NULL,SubProduct,SSubProduct) AS SubProduct       
+FROM (
+SELECT DATE(Year,Month,Day) AS Date,
+       sessionId, Source, Medium,	HitTime, hitNumber,	Host,	PagePath,	Product, SubProduct, ProductCheck, SubProductCheck, SProduct,	SSubProduct, SPagePath, SHitTime, ShitNumber       
+FROM (
+SELECT CAST(IF(STARTS_WITH(Month,"0"),SUBSTR(Month, -1),Month) AS INT64) AS Month,
+       CAST(Year AS INT64) AS Year,
+       CAST(IF(STARTS_WITH(Day,"0"),SUBSTR(Day, -1),Day) AS INT64) AS Day,
+       Date, sessionId, Source, Medium,	HitTime, hitNumber,	Host,	PagePath,	Product, SubProduct, ProductCheck, SubProductCheck, SProduct,	SSubProduct, SPagePath, SHitTime, ShitNumber
+FROM (
+SELECT SUBSTR(SUBSTR(date, 0, 6),-2) AS Month,
+       SUBSTR(date, 0, 4) AS Year, 
+       SUBSTR(date,-2) AS Day,
+       *
+FROM (
+SELECT Prod.date AS Date, Prod.sessionId AS sessionId, Prod.Source AS Source, Prod.Medium AS Medium, Prod.HitTime AS HitTime, Prod.hitNumber AS hitNumber, Prod.Host AS Host,
+       Prod.PagePath AS PagePath, Prod.Product AS Product, Prod.SubProduct AS SubProduct, Prod.ProductCheck AS ProductCheck, Prod.SubProductCheck AS SubProductCheck,
+       SubProd.Product AS SProduct, SubProd.SubProduct AS SSubProduct, SubProd.PagePath AS SPagePath, SubProd.HitTime AS SHitTime, SubProd.hitNumber AS ShitNumber
+FROM (
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--В ЭТОЙ ТАБЛИЦЕ МЫ ВЫДЕЛИЛИ ИМЕННО ПЕРВЫЕ СТРАНИЦЫ ПРОСМОТРА ГДЕ ИДЕНТИФИЦИРУЕТСЯ ПРОДУКТ
+SELECT date, sessionId, Source, Medium, HitTime, hitNumber, Host, PagePath, Product, SubProduct, ProductCheck, SubProductCheck
+FROM (
+
+SELECT *,
+       ROW_NUMBER() OVER (PARTITION BY sessionId ORDER BY hitNumber) AS FistViewPr
+FROM (
+
+SELECT *, --ПЕРВЫЙ ОБХОД ПО УДАЛЕНИЮ СТРАНИЦ НЕ ПРИВЯЗАННЫХ К ПРОДУКТУ
+       IF(HitMax=1,"NOT DEL",
+          IF(HitMax>1,
+             IF(Product="Other" AND SubProduct="Other" AND CountUnSubPrCheck=HitNum AND HitNum=HitMax,"NOT DEL",
+                 IF(Product="Other" AND SubProduct="Other","DEL",
+                    IF(SubProductCheck="NOconsilience","NOT DEL","")
+             )),"")) AS ForDel     
+FROM (             
+
+SELECT date, sessionId, Source, Medium, HitTime, hitNumber, Host, PagePath, Product, SubProduct, ProductCheck,
+       IF(ProductCheck=SubProduct,"consilience","NOconsilience") AS SubProductCheck,
+       CountUnSubPrCheck, HitNum, HitMax
+FROM (
+
+SELECT date, sessionId, Source, Medium, HitTime, hitNumber, Host, PagePath, Product, SubProduct,
+       CASE 
+           WHEN Product="CC" THEN "CC"  
+           WHEN Product="DC" THEN "DC"
+           WHEN Product="Insurance" THEN "Insurance"
+           WHEN Product="ML / ML REF" THEN "ML" 
+           WHEN Product="PL / PL REF / PL Auto" THEN "PL"          
+           WHEN Product="SA" THEN "SA"   
+           WHEN Product="TD" THEN "TD"            
+           WHEN Product="SME" THEN "SME"  
+           WHEN Product="Premium Product" THEN "Premium Product"             
+           ELSE "Other"
+       END AS ProductCheck,
+       COUNT(SubProduct) OVER (PARTITION BY sessionId, Product, SubProduct) AS CountUnSubPrCheck,           
+       HitNum,
+       MAX(HitNum) OVER (PARTITION BY sessionId) AS HitMax       
+FROM (
+
+SELECT *,
+       ROW_NUMBER() OVER (PARTITION BY sessionId ORDER BY hitNumber) AS HitNum            
+FROM (
+SELECT date, IF(customDimensions.index=4,customDimensions.value,NULL) AS sessionId, --ДЛЯ КАЖДОГО ХИТА ПО СТРАНИЦЕ ИДЕНТИФИЦИРУЕМ ПРОДУКТ И ПОДПРОДУКТ
+       trafficSource.source AS Source, trafficSource.medium AS Medium, 
+       h.time AS HitTime, h.hitNumber AS hitNumber, h.page.hostname AS Host, h.page.pagePath AS PagePath,
+       CASE
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/retail\/cards\/credit\/.*|^\/promo\/vsesrazu-cc\/.*|\/promo\/110days\/$|\/promo\/110days\/refinance\/$|\/promo\/110days\/withdrawal\/$") THEN "CC"
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/retail\/cards\/debit\/.*|^\/retail\/package\/.*|^\/promo\/msgold'/.*|^\/promo\/vsesrazu-dc\/.*") THEN "DC"
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/retail\/insurance\/.*") THEN "Insurance"
+--           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/premium_service\/premiumbanking\/products\/loans\/pokupka-nedvizhimosti\/.*|^\/premium_service\/premiumdirect\/loans\/pokupka-nedvijimosti\/.*|^\/promo\/ipoteka\/.*|^\/promo\/mortgage\/.*|^\/retail\/mortgageloans.*|^\/retail\/mortgageloans\/.*") THEN "ML / ML REF" 
+--           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/premium_service\/premiumbanking\/products\/loans\/kredity-na-lyubyye-tseli\/.*|^\/premium_service\/premiumbanking\/products\/loans\/pledge\/.*|^\/premium_service\/premiumdirect\/loans\/kredit-na-lubie-celi\/.*|^\/premium_service\/premiumdirect\/loans\/pledge\/.*|^\/promo\/pl\/.*|^\/retail\/consumerloans\/.*|^\/retail\/paying_off\/.*") THEN "PL / PL REF / PL Auto"
+--           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/premium_service\/premiumbanking\/products\/investment\/.*|^\/premium_service\/premiumdirect\/razmeshhenie-sredstv\/.*|^\/retail\/deposit_investing\/.*|^\/promo\/deposit\/.*|^\/promo\/savings\/.*") THEN "SA"
+--           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/premium_service\/premiumbanking\/products\/cards\/debit\/.*|^\/premium_service\/premiumdirect\/cards\/debit\/.*|^\/retail\/cards\/debit\/.*|^\/retail\/package\/.*|^\/promo\/msgold'/.*|^\/promo\/vsesrazu-dc\/.*") THEN "DC"
+--           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/retail\/cards\/credit\/.*|^\/premium_service\/premiumbanking\/products\/cards\/credit\/.*|^\/promo\/vsesrazu-cc\/.*|\/promo\/110days\/$|\/promo\/110days\/refinance\/$|\/promo\/110days\/withdrawal\/$") THEN "CC"           
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/promo\/ipoteka\/.*|^\/promo\/mortgage\/.*|^\/retail\/mortgageloans.*|^\/retail\/mortgageloans\/.*") THEN "ML / ML REF" 
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/promo\/pl\/.*|^\/retail\/consumerloans\/.*|^\/retail\/paying_off\/.*") THEN "PL / PL REF / PL Auto"
+--           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/retail\/deposit_investing\/.*|^\/promo\/deposit\/.*|^\/promo\/savings\/.*") THEN "SA"
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/promo\/deposit\/.*|^\/retail\/deposit_investing\/deposit\/.*") THEN "TD" 
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/promo\/savings\/.*|^\/retail\/deposit_investing\/savings_account.*|^\/retail\/deposit_investing\/savings_account\/.*") THEN "SA"            
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/business.*|^\/business\/.*|^\/corporate\/.*|^\/financial\/.*|^\/promo\/rko\/.*") THEN "SME"
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/premium_service\/.*") THEN "Premium Product"
+           ELSE "Other"
+       END AS Product,
+       CASE
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/retail\/cards\/credit\/110-days\/.*|\/promo\/110days\/$|\/promo\/110days\/refinance\/$|\/promo\/110days\/withdrawal\/$") THEN "CC 110 days"
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/promo\/vsesrazu-cc\/.*|^\/retail\/cards\/credit\/visa-all-at-once\/.*") THEN "CC Vse Srazu"    
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/retail\/cards\/credit\/.*|^\/premium_service\/premiumbanking\/products\/cards\/credit\/.*|^\/promo\/vsesrazu-cc\/.*") THEN "CC"
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/premium_service\/premiumbanking\/products\/cards\/debit\/buyandfly\/.*|^\/premium_service\/premiumdirect\/cards\/debit\/buyandfly\/.*|^\/retail\/cards\/debit\/buyandfly\/.*") THEN "DC Buy&Fly"     
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/promo\/msgold\/.*|^\/retail\/cards\/debit\/mc-gold-package\/.*") THEN "DC Gold"     
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/promo\/vsesrazu-dc\/.*|^\/retail\/cards\/debit\/visa-all-at-once\/.*") THEN "DC Vse Srazu"  
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/premium_service\/premiumbanking\/products\/cards\/debit\/.*|^\/premium_service\/premiumdirect\/cards\/debit\/.*|^\/retail\/cards\/debit\/.*|^\/retail\/package\/.*|^\/promo\/msgold'/.*|^\/promo\/vsesrazu-dc\/.*") THEN "DC"
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/retail\/insurance\/.*") THEN "Other" 
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/promo\/mortgage\/refinance\/.*|^\/retail\/mortgageloans\/refinansirovanie-kreditov-inyh-bankov\/.*|^\/retail\/mortgageloans\/refinansirovanie-valjutnoj-ipoteki\/.*") THEN "ML Refinans"     
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/promo\/mortgage\/secondary\/.*|^\/retail\/mortgageloans\/kottedzh-na-vtorichnom-rynke\/.*|^\/retail\/mortgageloans\/kvartira-na-vtorichnom-rynke\/.*") THEN "ML Secondary"    
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/premium_service\/premiumbanking\/products\/loans\/pokupka-nedvizhimosti\/.*|^\/premium_service\/premiumdirect\/loans\/pokupka-nedvijimosti\/.*|^\/promo\/ipoteka\/.*|^\/promo\/mortgage\/.*|^\/retail\/mortgageloans.*|^\/retail\/mortgageloans\/.*") THEN "ML" 
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/promo\/pl\/auto\/.*|^\/retail\/consumerloans\/auto\/.*|^\/retail\/consumerloans\/used-auto\/.*") THEN "PL Auto Credit" 
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/promo\/pl\/affiliate_refin\/.*|^\/promo\/pl\/refinance\/.*|^\/retail\/consumerloans\/refinancing\/.*") THEN "PL Refinans"    
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/premium_service\/premiumbanking\/products\/loans\/kredity-na-lyubyye-tseli\/.*|^\/premium_service\/premiumbanking\/products\/loans\/pledge\/.*|^\/premium_service\/premiumdirect\/loans\/kredit-na-lubie-celi\/.*|^\/premium_service\/premiumdirect\/loans\/pledge\/.*|^\/promo\/pl\/.*|^\/retail\/consumerloans\/.*|^\/retail\/paying_off\/.*") THEN "PL"    
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/promo\/deposit\/.*|^\/retail\/deposit_investing\/deposit\/.*") THEN "SA Deposit" 
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/promo\/savings\/.*|^\/retail\/deposit_investing\/savings_account.*|^\/retail\/deposit_investing\/savings_account\/.*") THEN "SA Savings" 
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/premium_service\/premiumbanking\/products\/investment\/.*|^\/premium_service\/premiumdirect\/razmeshhenie-sredstv\/.*|^\/retail\/deposit_investing\/.*|^\/promo\/deposit\/.*|^\/promo\/savings\/.*") THEN "SA"           
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/business\/cards\/metro.*|^\/business\/cards\/metro\/.*|^\/promo\/rko\/metro_msk\/.*|^\/promo\/rko\/metro_reg\/.*|^\/promo\/rko\/metro_small\/.*") THEN "SME Metro"           
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/business\/r-dealer\/.*|^\/business\/r-kassa\/.*") THEN "SME Online Kassa"     
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/business\/acquiring\/.*|^\/corporate\/management\/acquiring\/.*|^\/promo\/rko\/online-acquiring\/.*") THEN "SME Trade Acq"     
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/business.*|^\/business\/.*|^\/corporate\/.*|^\/financial\/.*|^\/promo\/rko\/.*") THEN "SME"           
+           ELSE "Other"
+       END AS SubProduct        
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h 
+WHERE 
+      _TABLE_SUFFIX BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'0101') AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
+      AND REGEXP_CONTAINS(trafficSource.medium,R"organic|referral|\(none\)") 
+      AND REGEXP_CONTAINS(h.page.hostname,R"^www\.raiffeisen\.ru") 
+) AS t1
+WHERE sessionId IS NOT NULL
+
+) AS t2
+) AS t3
+) AS t4
+) AS t5
+WHERE ForDel="" OR ForDel="NOT DEL"
+) AS t6
+WHERE FistViewPr=1
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+) AS Prod
+
+LEFT JOIN ( --ПРИСОЕДИНЯЕМ ТАБЛИЦУ ГДЕ ВЫДЕЛЕНЫ ПРОСМОТРЫ СТРАНИЦ С КОНКРЕТНЫМ ПОДПРОДУКТОМ
+
+SELECT date, sessionId, Source, Medium, HitTime, hitNumber, Host, PagePath, Product, SubProduct, ProductCheck, SubProductCheck
+FROM (
+SELECT *,
+       ROW_NUMBER() OVER (PARTITION BY sessionId ORDER BY hitNumber) AS FistViewPr
+FROM (
+SELECT *, --ПЕРВЫЙ ОБХОД ПО УДАЛЕНИЮ СТРАНИЦ НЕ ПРИВЯЗАННЫХ К ПРОДУКТУ
+       IF(HitMax=1,"NOT DEL",
+          IF(HitMax>1,
+             IF(Product="Other" AND SubProduct="Other" AND CountUnSubPrCheck=HitNum AND HitNum=HitMax,"NOT DEL",
+                 IF(Product="Other" AND SubProduct="Other","DEL",
+                    IF(SubProductCheck="NOconsilience","NOT DEL","")
+             )),"")) AS ForDel     
+FROM (             
+SELECT date, sessionId, Source, Medium, HitTime, hitNumber, Host, PagePath, Product, SubProduct, ProductCheck,
+       IF(ProductCheck=SubProduct,"consilience","NOconsilience") AS SubProductCheck,
+       CountUnSubPrCheck, HitNum, HitMax
+FROM (
+SELECT date, sessionId, Source, Medium, HitTime, hitNumber, Host, PagePath, Product, SubProduct,
+       CASE 
+           WHEN Product="CC" THEN "CC"  
+           WHEN Product="DC" THEN "DC"
+           WHEN Product="Insurance" THEN "Insurance"
+           WHEN Product="ML / ML REF" THEN "ML" 
+           WHEN Product="PL / PL REF / PL Auto" THEN "PL"          
+           WHEN Product="SA" THEN "SA"    
+           WHEN Product="TD" THEN "TD"             
+           WHEN Product="SME" THEN "SME"  
+           WHEN Product="Premium Product" THEN "Premium Product"              
+           ELSE "Other"
+       END AS ProductCheck,
+       COUNT(SubProduct) OVER (PARTITION BY sessionId, Product, SubProduct) AS CountUnSubPrCheck,           
+       HitNum,
+       MAX(HitNum) OVER (PARTITION BY sessionId) AS HitMax       
+FROM (
+
+SELECT *,
+       ROW_NUMBER() OVER (PARTITION BY sessionId ORDER BY hitNumber) AS HitNum            
+FROM (
+SELECT date, IF(customDimensions.index=4,customDimensions.value,NULL) AS sessionId, --ДЛЯ КАЖДОГО ХИТА ПО СТРАНИЦЕ ИДЕНТИФИЦИРУЕМ ПРОДУКТ И ПОДПРОДУКТ
+       trafficSource.source AS Source, trafficSource.medium AS Medium, 
+       h.time AS HitTime, h.hitNumber AS hitNumber, h.page.hostname AS Host, h.page.pagePath AS PagePath,
+       CASE
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/retail\/cards\/credit\/.*|^\/promo\/vsesrazu-cc\/.*|\/promo\/110days\/$|\/promo\/110days\/refinance\/$|\/promo\/110days\/withdrawal\/$") THEN "CC"
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/retail\/cards\/debit\/.*|^\/retail\/package\/.*|^\/promo\/msgold'/.*|^\/promo\/vsesrazu-dc\/.*") THEN "DC"
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/retail\/insurance\/.*") THEN "Insurance"
+--           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/premium_service\/premiumbanking\/products\/loans\/pokupka-nedvizhimosti\/.*|^\/premium_service\/premiumdirect\/loans\/pokupka-nedvijimosti\/.*|^\/promo\/ipoteka\/.*|^\/promo\/mortgage\/.*|^\/retail\/mortgageloans.*|^\/retail\/mortgageloans\/.*") THEN "ML / ML REF" 
+--           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/premium_service\/premiumbanking\/products\/loans\/kredity-na-lyubyye-tseli\/.*|^\/premium_service\/premiumbanking\/products\/loans\/pledge\/.*|^\/premium_service\/premiumdirect\/loans\/kredit-na-lubie-celi\/.*|^\/premium_service\/premiumdirect\/loans\/pledge\/.*|^\/promo\/pl\/.*|^\/retail\/consumerloans\/.*|^\/retail\/paying_off\/.*") THEN "PL / PL REF / PL Auto"
+--           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/premium_service\/premiumbanking\/products\/investment\/.*|^\/premium_service\/premiumdirect\/razmeshhenie-sredstv\/.*|^\/retail\/deposit_investing\/.*|^\/promo\/deposit\/.*|^\/promo\/savings\/.*") THEN "SA"
+--           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/premium_service\/premiumbanking\/products\/cards\/debit\/.*|^\/premium_service\/premiumdirect\/cards\/debit\/.*|^\/retail\/cards\/debit\/.*|^\/retail\/package\/.*|^\/promo\/msgold'/.*|^\/promo\/vsesrazu-dc\/.*") THEN "DC"
+--           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/retail\/cards\/credit\/.*|^\/premium_service\/premiumbanking\/products\/cards\/credit\/.*|^\/promo\/vsesrazu-cc\/.*|\/promo\/110days\/$|\/promo\/110days\/refinance\/$|\/promo\/110days\/withdrawal\/$") THEN "CC"           
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/promo\/ipoteka\/.*|^\/promo\/mortgage\/.*|^\/retail\/mortgageloans.*|^\/retail\/mortgageloans\/.*") THEN "ML / ML REF" 
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/promo\/pl\/.*|^\/retail\/consumerloans\/.*|^\/retail\/paying_off\/.*") THEN "PL / PL REF / PL Auto"
+--           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/retail\/deposit_investing\/.*|^\/promo\/deposit\/.*|^\/promo\/savings\/.*") THEN "SA"
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/promo\/deposit\/.*|^\/retail\/deposit_investing\/deposit\/.*") THEN "TD" 
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/promo\/savings\/.*|^\/retail\/deposit_investing\/savings_account.*|^\/retail\/deposit_investing\/savings_account\/.*") THEN "SA" 
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/business.*|^\/business\/.*|^\/corporate\/.*|^\/financial\/.*|^\/promo\/rko\/.*") THEN "SME"
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/premium_service\/.*") THEN "Premium Product"
+           ELSE "Other"
+       END AS Product,
+       CASE
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/retail\/cards\/credit\/110-days\/.*|\/promo\/110days\/$|\/promo\/110days\/refinance\/$|\/promo\/110days\/withdrawal\/$") THEN "CC 110 days"
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/promo\/vsesrazu-cc\/.*|^\/retail\/cards\/credit\/visa-all-at-once\/.*") THEN "CC Vse Srazu"    
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/retail\/cards\/credit\/.*|^\/premium_service\/premiumbanking\/products\/cards\/credit\/.*|^\/promo\/vsesrazu-cc\/.*") THEN "CC"
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/premium_service\/premiumbanking\/products\/cards\/debit\/buyandfly\/.*|^\/premium_service\/premiumdirect\/cards\/debit\/buyandfly\/.*|^\/retail\/cards\/debit\/buyandfly\/.*") THEN "DC Buy&Fly"     
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/promo\/msgold\/.*|^\/retail\/cards\/debit\/mc-gold-package\/.*") THEN "DC Gold"     
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/promo\/vsesrazu-dc\/.*|^\/retail\/cards\/debit\/visa-all-at-once\/.*") THEN "DC Vse Srazu"  
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/premium_service\/premiumbanking\/products\/cards\/debit\/.*|^\/premium_service\/premiumdirect\/cards\/debit\/.*|^\/retail\/cards\/debit\/.*|^\/retail\/package\/.*|^\/promo\/msgold'/.*|^\/promo\/vsesrazu-dc\/.*") THEN "DC"
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/retail\/insurance\/.*") THEN "Other" 
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/promo\/mortgage\/refinance\/.*|^\/retail\/mortgageloans\/refinansirovanie-kreditov-inyh-bankov\/.*|^\/retail\/mortgageloans\/refinansirovanie-valjutnoj-ipoteki\/.*") THEN "ML Refinans"     
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/promo\/mortgage\/secondary\/.*|^\/retail\/mortgageloans\/kottedzh-na-vtorichnom-rynke\/.*|^\/retail\/mortgageloans\/kvartira-na-vtorichnom-rynke\/.*") THEN "ML Secondary"    
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/premium_service\/premiumbanking\/products\/loans\/pokupka-nedvizhimosti\/.*|^\/premium_service\/premiumdirect\/loans\/pokupka-nedvijimosti\/.*|^\/promo\/ipoteka\/.*|^\/promo\/mortgage\/.*|^\/retail\/mortgageloans.*|^\/retail\/mortgageloans\/.*") THEN "ML" 
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/promo\/pl\/auto\/.*|^\/retail\/consumerloans\/auto\/.*|^\/retail\/consumerloans\/used-auto\/.*") THEN "PL Auto Credit" 
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/promo\/pl\/affiliate_refin\/.*|^\/promo\/pl\/refinance\/.*|^\/retail\/consumerloans\/refinancing\/.*") THEN "PL Refinans"    
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/premium_service\/premiumbanking\/products\/loans\/kredity-na-lyubyye-tseli\/.*|^\/premium_service\/premiumbanking\/products\/loans\/pledge\/.*|^\/premium_service\/premiumdirect\/loans\/kredit-na-lubie-celi\/.*|^\/premium_service\/premiumdirect\/loans\/pledge\/.*|^\/promo\/pl\/.*|^\/retail\/consumerloans\/.*|^\/retail\/paying_off\/.*") THEN "PL"    
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/promo\/deposit\/.*|^\/retail\/deposit_investing\/deposit\/.*") THEN "SA Deposit" 
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/promo\/savings\/.*|^\/retail\/deposit_investing\/savings_account.*|^\/retail\/deposit_investing\/savings_account\/.*") THEN "SA Savings" 
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/premium_service\/premiumbanking\/products\/investment\/.*|^\/premium_service\/premiumdirect\/razmeshhenie-sredstv\/.*|^\/retail\/deposit_investing\/.*|^\/promo\/deposit\/.*|^\/promo\/savings\/.*") THEN "SA"           
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/business\/cards\/metro.*|^\/business\/cards\/metro\/.*|^\/promo\/rko\/metro_msk\/.*|^\/promo\/rko\/metro_reg\/.*|^\/promo\/rko\/metro_small\/.*") THEN "SME Metro"           
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/business\/r-dealer\/.*|^\/business\/r-kassa\/.*") THEN "SME Online Kassa"     
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/business\/acquiring\/.*|^\/corporate\/management\/acquiring\/.*|^\/promo\/rko\/online-acquiring\/.*") THEN "SME Trade Acq"     
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"^\/business.*|^\/business\/.*|^\/corporate\/.*|^\/financial\/.*|^\/promo\/rko\/.*") THEN "SME"           
+           ELSE "Other"
+       END AS SubProduct
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h 
+WHERE 
+      _TABLE_SUFFIX BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'0101') AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
+      AND REGEXP_CONTAINS(trafficSource.medium,R"organic|referral|\(none\)") 
+      AND REGEXP_CONTAINS(h.page.hostname,R"^www\.raiffeisen\.ru") 
+) AS t1
+WHERE sessionId IS NOT NULL
+
+) AS t2
+) AS t3
+) AS t4
+) AS t5
+WHERE SubProductCheck="NOconsilience"
+) AS t6
+WHERE FistViewPr=1
+
+) AS SubProd
+ON Prod.sessionId=SubProd.sessionId
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+) AS t1
+) AS t2
+) AS t3
+) AS t4
+GROUP BY Date, sessionId, Leads, QLeads, Issues, Cost, CostPerMonth, Source, Medium, hitNumber, Host, PagePath, Product, SubProduct 
+) AS t5
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+) AS TRC
+
+LEFT JOIN ( -- СКРЕЩИВАЕМ ТРАФИК И ПРИЗНАК NTB
+
+SELECT *
+FROM `raiffeisen-owox.Dictionary_US.NTB_Identification_Query`  
+
+) AS NTB
+ON TRC.sessionId=NTB.TsessionId
+
+) AS t1
+WHERE ROW=1
+) AS t2
+) AS t3
+) AS t4
+WHERE ROW=1
+) AS t5
+GROUP BY Month, Year, Medium, Product, TagNTB

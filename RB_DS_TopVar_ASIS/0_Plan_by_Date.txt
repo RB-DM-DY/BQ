@@ -1,0 +1,38 @@
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+--РАСПРЕДЕЛЕНИЕ ПЛАНА ПО ДНЯМ (РАЗНЕСЕНИЕ ПО ДНЯМ)
+SELECT CurrentYearDate AS Date, Month, Year, Product, Sessions,	Leads, Qleads, Issues, Cost, Medium, TagNTB, BrandFormance,	VB
+FROM (
+SELECT CurrentYearDate,	PrevuesYearDate, DateMonth, Month, Year, Product, 
+       Sessions/CurrentYearDateMaxDay AS Sessions,
+       Leads/CurrentYearDateMaxDay AS Leads,
+       QLeads/CurrentYearDateMaxDay AS Qleads,
+       Issues/CurrentYearDateMaxDay AS Issues,
+       Cost/CurrentYearDateMaxDay AS Cost,
+       Medium, TagNTB, BrandFormance,	VB
+FROM (
+SELECT *, MAX(CurrentYearDateDay) OVER (PARTITION BY Month) AS CurrentYearDateMaxDay
+FROM (       
+SELECT *, EXTRACT(DAY FROM CurrentYearDate) AS CurrentYearDateDay
+FROM (
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+--РАСПРЕДЕЛЕНИЕ ПЛАНА ПО ДНЯМ (ОБЪЕДИНИЛИ СПРАВОЧНИК ДАТ И ПЛАНЫ)
+SELECT t1.CurrentYearDate, t1.PrevuesYearDate,
+       t2.*
+FROM (       
+SELECT *,
+       CAST(EXTRACT(MONTH FROM CurrentYearDate) AS INT64) AS CurrentYearDateMonth, CAST(EXTRACT(YEAR FROM CurrentYearDate) AS INT64) AS CurrentYearDateYear,
+       CAST(EXTRACT(MONTH FROM PrevuesYearDate) AS INT64) AS PrevuesYearDateMonth, CAST(EXTRACT(YEAR FROM PrevuesYearDate) AS INT64) AS PrevuesYearDateYear    
+FROM `raiffeisen-owox.RB_DS_TopVar_ASIS.0_Calendar_Dictionary`
+) AS t1
+LEFT JOIN (
+SELECT *
+FROM `raiffeisen-owox.Dictionary_US.Target_MBO`
+) AS t2
+ON t1.CurrentYearDateMonth=t2.Month AND t1.CurrentYearDateYear=t2.Year
+--WHERE t1.CurrentYearDateMonth=1
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+) AS t1
+) AS t2
+) AS t3
+) AS t4
+------------------------------------------------------------------------------------------------------------------------------------------------------------

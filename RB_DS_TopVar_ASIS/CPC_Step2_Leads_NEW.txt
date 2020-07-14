@@ -1,0 +1,193 @@
+#standardSQL
+WITH BF AS ( --<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+SELECT BFName, CampaignIDCM, GA2.campaign as BFCamp, DateStart, DateFinish
+FROM `raiffeisen-owox.RB_DS_BrandFormance.Dictionary_BrandFormance_Dates`
+LEFT JOIN (SELECT GA2 FROM (SELECT campaign, cast(campaignId as STRING) as campaignId FROM `raiffeisen-owox.OWOXBI_CostData.ancore_ga2_campaign`) GA2) ON CampaignIDDV360=GA2.campaignId 
+/*добавим publicis*/
+UNION ALL
+SELECT  campaign as BFName, CAST(cid as STRING) , 'publicis|pr:dc|sp:cashback|plt:display|tg:aud|aud:interests|bids:cpm|classic|bf|video|' BFCamp, DATE('2020-01-01') DateStart,CURRENT_DATE() DateFinish
+FROM `raiffeisen-owox.OWOXBI_CostData.CostData_Publicis_DBM`
+),
+LEADS AS ( --<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--УНИКАЛИЗИРУЕМ ПО LEADID
+SELECT EXTRACT(MONTH FROM Date) AS Month, EXTRACT(YEAR FROM Date) AS Year, Date, LeadID, ProductLine, Product, Medium, 
+       UTM_CAMPAIGN AS Campaign, utm_term AS Keyword, NTB, VB, BrandFormance,
+       StatusLead, ApprovalLead
+FROM (
+SELECT Date, LeadID, ProductLine, Product, Medium, UTM_CAMPAIGN, utm_term, NTB, VB, BrandFormance,
+       StatusLead, ApprovalLead,
+       ROW_NUMBER() OVER (PARTITION BY LeadID) AS ROW
+FROM (
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ОБРАБОТКА ЛИДОВ С LEADID       
+SELECT DATE(LeadDate) AS Date, leadid AS LeadID, PRODUCT_LINE AS ProductLine, 
+       CASE 
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Credit') THEN 'CC'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Debit|IPayroll|MasterCard|Gold') THEN 'DC'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Premium Direct|Premium 5') THEN 'Premium Product'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Mortgage') THEN 'ML / ML REF'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Personal Loans') THEN 'PL / PL REF / PL Auto'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Saving Accounts') THEN 'SA'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Standard Term Deposits') THEN 'TD'           
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'RKO') THEN 'SME'
+       ELSE 'Other' END AS Product,       
+       UTM_MEDIUM AS Medium, UTM_CAMPAIGN, utm_term,
+       NTB, STATUS AS StatusLead, APPROVAL AS ApprovalLead,
+       CASE 
+           WHEN REGEXP_CONTAINS(UTM_CAMPAIGN,R".*\|vb\|.*|.*\|vb|_vb|.*vb\||vb%|7Cvb|7cvb") THEN "TRUE"           
+       ELSE 'FALSE' END AS VB,
+          CASE 
+              WHEN REGEXP_CONTAINS(UTM_CAMPAIGN,R".*\|bf\|.*|_bf|brandfrm") THEN "TRUE"
+              ELSE "FALSE"
+          END AS BrandFormance       
+FROM `raiffeisen-owox.Orders_CRM.CRM_orders`
+WHERE UTM_MEDIUM ='cpc'
+--      AND REGEXP_MATCH(UTM_SOURCE,R'yandex$|google$|mytarget|facebook|dbm|astraone')      
+--      AND CAST(DATE(LeadDate) AS STRING) BETWEEN '2018-11-01' AND '2018-11-30'
+      AND CAST(DATE(LeadDate) AS STRING) BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-2 AS STRING),'-01-01') AND CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING)
+--      AND REGEXP_CONTAINS(PRODUCT_LINE,r'Personal Loans')
+      AND leadid IS NOT NULL
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+UNION ALL
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ОБРАБОТКА ЛИДОВ БЕЗ LEADID
+SELECT Date, CAST(LeadID AS STRING) AS LeadID, ProductLine, Product, Medium, UTM_CAMPAIGN, utm_term, NTB, StatusLead, ApprovalLead, VB, BrandFormance
+FROM (       
+SELECT Date,
+       ROW_NUMBER() OVER (PARTITION BY LeadID) AS LeadID,
+       ProductLine, Product, Medium, UTM_CAMPAIGN, utm_term, NTB, StatusLead, ApprovalLead, VB, BrandFormance
+FROM (       
+SELECT DATE(LeadDate) AS Date, leadid AS LeadID, PRODUCT_LINE AS ProductLine, 
+       CASE 
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Credit') THEN 'CC'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Debit|IPayroll|MasterCard|Gold') THEN 'DC'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Premium Direct|Premium 5') THEN 'Premium Product'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Mortgage') THEN 'ML / ML REF'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Personal Loans') THEN 'PL / PL REF / PL Auto'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Saving Accounts') THEN 'SA'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Standard Term Deposits') THEN 'TD'           
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'RKO') THEN 'SME'
+       ELSE 'Other' END AS Product, 
+       CASE 
+           WHEN REGEXP_CONTAINS(UTM_CAMPAIGN,r'.*\|vb\|.*|.*\|vb|_vb|.*vb\||vb%|7Cvb|7cvb') THEN 'TRUE'
+       ELSE 'FALSE' END AS VB,
+          CASE 
+              WHEN REGEXP_CONTAINS(UTM_CAMPAIGN,R".*\|bf\|.*|_bf|brandfrm") THEN "TRUE"
+              ELSE "FALSE"
+          END AS BrandFormance,         
+       UTM_MEDIUM AS Medium, UTM_CAMPAIGN, utm_term,
+       NTB, STATUS AS StatusLead, APPROVAL AS ApprovalLead 
+FROM `raiffeisen-owox.Orders_CRM.CRM_orders`
+WHERE UTM_MEDIUM ='cpc'
+--      AND REGEXP_MATCH(UTM_SOURCE,R'yandex$|google$|mytarget|facebook|dbm|astraone')      
+--      AND CAST(DATE(LeadDate) AS STRING) BETWEEN '2018-11-01' AND '2018-11-30'
+      AND CAST(DATE(LeadDate) AS STRING) BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-2 AS STRING),'-01-01') AND CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING)
+--      AND REGEXP_CONTAINS(PRODUCT_LINE,r'Personal Loans')
+      AND leadid IS NULL
+) AS t0
+) AS t1
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+) AS t1
+) AS t2
+WHERE ROW=1
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+),
+BFLEADS AS ( --<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ИДЕНТИФИЦИРУЕМ ЛИДЫ С ПРИЗНАК BRANDFORMANCE
+SELECT t1.*,
+       t2.BFName, t2.DateStart, t2.DateFinish
+FROM (
+SELECT *
+FROM LEADS
+) AS t1
+INNER JOIN (
+SELECT *
+FROM BF
+) AS t2
+ON REGEXP_CONTAINS(t1.keyword,t2.CampaignIDCM)
+   AND t1.date BETWEEN t2.DateStart AND t2.DateFinish
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------   
+)
+
+--<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+------------------------------------------------------------------------------------------------------------------------------------------- 
+-- НОВЫЙ ФОРМАТ ДАШБОРДА
+SELECT date, Month, Year,
+       SUM(Sessions) AS Sessions,
+       SUM(Leads) AS Leads, 
+       SUM(QLeads) AS QLeads, 
+       SUM(Issues) AS Issues,
+       SUM(Cost) AS Cost,  
+       NTB AS TagNTB, Product, Medium, VB, BrandFormance, BFName, "FORM_LEAD" AS API
+FROM (
+SELECT Date, Month, Year,
+       0 AS Sessions,
+       1 AS Leads,
+       0 AS QLeads,
+       0 AS Issues,
+       0 AS Cost,       
+       NTB, Product, Medium, VB, BrandFormance, BFName
+FROM (
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ПОДГОНКА ПОД ФОРМАТ ДАШБОРДА
+--SELECT * 
+--FROM (
+--SELECT Month, Year,
+--       IF(LeadID='notset',0,0) AS Sessions,
+--       COUNT(Date) OVER (PARTITION BY Year, Month, Medium, NTB, Product, VB, BrandFormance, BFName) AS Leads,
+--       IF(LeadID='notset',0,0) AS QLeads,
+--       IF(LeadID='notset',0,0) AS Issues,
+--       IF(LeadID='notset',0,0) AS Cost,       
+--       NTB, Product, Medium, VB, BrandFormance, BFName
+--FROM (
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ОБРАБАТЫВАЕМ ПОЛУЧЕННЫЙ СПИСОК
+SELECT *
+FROM (
+SELECT Month,	Year,	Date,	LeadID,	ProductLine, Product, Medium, Campaign, Keyword, NTB, VB,
+       CASE 
+           WHEN BFName IS NULL THEN "FALSE"
+           ELSE "TRUE"
+       END AS BrandFormance, 
+       CASE 
+           WHEN BFName IS NULL THEN "NULL"
+           ELSE BFName
+       END AS BFName    
+FROM (       
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--УДАЛЯЕМ ИЗ ОБЩЕГО СПИКА ЛИДЫ С ПРИЗНАКОМ BRANDFORMANCE
+SELECT *
+FROM (
+SELECT t1.*,
+       t2.BFName, t2.DateStart, t2.DateFinish
+FROM (
+SELECT *
+FROM LEADS
+) AS t1
+LEFT JOIN (
+SELECT *
+FROM BFLEADS
+) AS t2
+ON t1.LeadID=t2.LeadID
+) t1 WHERE BFName IS NULL
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------   
+UNION ALL
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------  
+--ДОБАВЛЯЕМ ЛИДЫ С ПРИЗНАКОМ BRANDFORMANCE
+SELECT *
+FROM BFLEADS
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------  
+) AS t1
+) AS t2
+GROUP BY Month,	Year,	Date,	LeadID,	ProductLine, Product, Medium,	Campaign,	Keyword, NTB,	VB,	BrandFormance, BFName
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------     
+--) AS t0
+--) AS t1
+--GROUP BY Month,	Year,	Sessions,	Leads, QLeads, Issues, Cost, NTB,	Product, Medium, VB, BrandFormance, BFName
+--ORDER BY Year, Month, Product
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------ 
+) AS t1
+) AS t2
+GROUP BY date, Month, Year, Medium, Product, TagNTB, VB, BrandFormance, BFName

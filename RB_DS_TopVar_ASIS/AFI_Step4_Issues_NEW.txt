@@ -1,0 +1,99 @@
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ПОД НОВЫЙ ДАШБОРД
+SELECT Date, Month,	Year,
+       0 AS Sessions,
+       0 AS Leads,       
+       0 AS QLeads,
+       SUM(Leads) AS Issues,  
+       SUM(Cost) AS Cost,
+       NTB, Product, Medium, VB, BrandFormance,	BFName, API
+FROM (
+SELECT Date, EXTRACT(MONTH FROM Date) AS Month, EXTRACT(YEAR FROM Date) AS Year, Leads, Product, Source, Medium, NTB, Leads*LeadPrice AS Cost,
+       CASE 
+           WHEN REGEXP_CONTAINS(source,R"sovest|megafon") THEN "TRUE"
+           ELSE "FALSE"
+       END AS VB,	"FALSE" AS BrandFormance, "NULL" AS	BFName, API 
+FROM (
+SELECT Date, 1 AS Leads, ProductLine, Product, Source, Medium, NTB, API, LeadPrice	
+FROM (
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ДОБАВЛЕНИЕ ЦЕНЫ ЗА ЛИД
+SELECT Date, Leads,	ProductLine, Product,	Source,	Medium,	NTB, API, LeadPrice --ПОВТОРНО УНИКАЛИЗИРУЕМ ЛИДЫ
+FROM (
+SELECT Leads.Date AS Date, Leads.LeadID AS Leads, Leads.ProductLine AS ProductLine, Leads.Product AS Product, Leads.Source AS Source, Leads.Medium AS Medium,
+       Leads.NTB AS NTB, Leads.StatusLead AS StatusLead, Leads.ApprovalLead AS ApprovalLead, Leads.API AS API, IF(Price.CostIssue IS NULL,0,Price.CostIssue) AS LeadPrice
+FROM (
+SELECT CONCAT(CAST(EXTRACT(MONTH FROM Date) AS STRING),CAST(EXTRACT(YEAR FROM Date) AS STRING),Product,Source) AS ConCat,
+       Date, LeadID, ProductLine, Product, Source, Medium, NTB, StatusLead, ApprovalLead, API
+FROM (
+SELECT Date, LeadID, ProductLine,	Product, Source, Medium, NTB,	StatusLead,	ApprovalLead, API
+FROM (
+SELECT *,
+       ROW_NUMBER() OVER (PARTITION BY Date, LeadID, ProductLine,	Product, Source, Medium, NTB,	StatusLead,	ApprovalLead) AS ROW
+FROM (
+
+SELECT *,
+       IF((REGEXP_CONTAINS(Product,r'PL|CC') and (StatusLead = 'open' or StatusLead = 'deal') and (ApprovalLead = 'approved' or ApprovalLead = 'Approval'  or ApprovalLead = 'Approved')),'Issue',
+       IF((REGEXP_CONTAINS(Product,r'DC') and (StatusLead = 'active')),'Issue',
+       IF((REGEXP_CONTAINS(Product,r'SA|TD') and (StatusLead = 'open')),'Issue',
+       IF((REGEXP_CONTAINS(Product,r'SME|ML') and REGEXP_CONTAINS(StatusLead,R'Open|open|deal')),'Issue',    
+       IF(Product = 'Other' and (StatusLead = 'open' or StatusLead = 'deal' or StatusLead = 'delivered' or StatusLead = 'active') and 
+          (ApprovalLead = 'approved' or ApprovalLead = 'Approved' or ApprovalLead = 'approval' or ApprovalLead = 'Approval') ,'Issue','not'))))) as Issue,
+       CASE
+           WHEN STRPOS(LeadID,"API")>2 THEN "API_LEAD"
+           ELSE "FORM_LEAD"
+       END AS API          
+FROM (
+
+SELECT DATE(LeadDate) AS Date, leadid AS LeadID, PRODUCT_LINE AS ProductLine, 
+       CASE 
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Credit') THEN 'CC'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Debit|IPayroll|Premium Direct|MasterCard|Gold') THEN 'DC'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Mortgage') THEN 'ML / ML REF'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Personal Loans') THEN 'PL / PL REF / PL Auto'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Saving Accounts') THEN 'SA'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Standard Term Deposits') THEN 'TD' 
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'RKO') THEN 'SME'
+       ELSE 'Other' END AS Product, 
+       CASE 
+           WHEN REGEXP_CONTAINS(UTM_SOURCE,R'sravni') THEN 'sravni'
+           WHEN REGEXP_CONTAINS(UTM_SOURCE,R'banki') THEN 'banki'  
+           WHEN REGEXP_CONTAINS(UTM_SOURCE,R'leadgid') THEN 'leadgid'    
+           WHEN REGEXP_CONTAINS(UTM_SOURCE,R'linkprofit') THEN 'linkprofit'
+           WHEN REGEXP_CONTAINS(UTM_SOURCE,R'leads') THEN 'leads'
+           WHEN REGEXP_CONTAINS(UTM_SOURCE,R'cityads') THEN 'cityads'  
+           WHEN REGEXP_CONTAINS(UTM_SOURCE,R'cpahub') THEN 'cpahub'       
+           WHEN REGEXP_CONTAINS(UTM_SOURCE,R'masterlead') THEN 'masterlead'
+           WHEN REGEXP_CONTAINS(UTM_SOURCE,R'moneymatika') THEN 'moneymatika'
+           WHEN REGEXP_CONTAINS(UTM_SOURCE,R'vbru') THEN 'vbru'           
+           ELSE UTM_SOURCE
+       END AS Source,       
+       UTM_MEDIUM AS Medium,
+       NTB, STATUS AS StatusLead, APPROVAL AS ApprovalLead
+       
+FROM `raiffeisen-owox.Orders_CRM.CRM_orders` 
+WHERE UTM_MEDIUM = 'affiliate' 
+      AND CAST(DATE(LeadDate) AS STRING) BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'-01-01') AND CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING)
+) AS t0
+) AS t1
+WHERE Issue="Issue"
+) AS t2
+WHERE ROW=1
+) AS t3
+) AS Leads
+
+LEFT JOIN (
+
+SELECT month,	year,	ProductGroup,	Source,	Medium,	LinearLead,	LinearQLead, LinearIssue, CostLead,	CostQLead, CostIssue,
+       CONCAT(CAST(month AS STRING),CAST(year AS STRING),ProductGroup,Source) AS ConCat
+FROM `raiffeisen-owox.Dictionary_US.Calculation_Price_Leads`  
+) AS Price
+
+ON Leads.ConCat=Price.ConCat
+) AS t1
+GROUP BY Date, Leads,	ProductLine, Product,	Source,	Medium,	NTB, API, LeadPrice
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+) AS t1
+) AS t2
+) AS t1
+GROUP BY Date, Month,	Year, NTB, Product, Medium, VB, BrandFormance, BFName, API

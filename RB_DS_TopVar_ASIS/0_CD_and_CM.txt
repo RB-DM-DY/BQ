@@ -1,0 +1,24 @@
+SELECT *
+FROM (
+SELECT date, 
+       IF(customDimensions.index=4,customDimensions.value,NULL) AS sessionId,
+       IF(dimension.index=21,dimension.value,NULL) AS ClickHeightCoordinateRange, 
+       IF(dimension.index=22,dimension.value,NULL) AS ClickWidthCoordinateRange,
+       IF(dimension.index=30,dimension.value,NULL) AS ScrollHeightRange,     
+       IF(dimension.index=31,dimension.value,NULL) AS ScrollTimeByLastScrollRange,        
+       IF(metric.index = 1, metric.value, NULL) AS MaxHeightPage,
+       IF(metric.index = 2, metric.value, NULL) AS MaxWidthPage,
+       IF(metric.index = 3, metric.value, NULL) AS ClickHeightCoordinate,
+       IF(metric.index = 4, metric.value, NULL) AS ClickWidthCoordinate,     
+       IF(metric.index = 9, metric.value, NULL) AS ScrollHeight,
+       IF(metric.index = 10, metric.value, NULL) AS ScrollTimeByPageView,
+       trafficSource.source AS source, trafficSource.medium AS medium,
+       trafficSource.campaign AS campaign       
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h, UNNEST(h.customMetrics) metric, UNNEST(h.customDimensions) dimension
+WHERE
+--      _TABLE_SUFFIX BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'0101') AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
+      REGEXP_CONTAINS(date,R"201901.*")       
+      AND trafficSource.medium = "cpc"
+) AS t1
+WHERE sessionId IS NOT NULL
+--      AND ClickHeightCoordinateRange IS NOT NULL

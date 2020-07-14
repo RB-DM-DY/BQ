@@ -1,0 +1,163 @@
+SELECT SUBSTR(SUBSTR(date, 0, 6),-2) AS Month,
+       SUBSTR(date, 0, 4) AS Year, 
+--         SUBSTR(date,-2) AS DAY,
+       Sessions, 
+       IF(Medium="notset",0,0) AS Leads, 
+       IF(Medium="notset",0,0) AS QLeads, 
+       IF(Medium="notset",0,0) AS Issues, 
+       ROUND(IF(SesCost IS NULL,0,SesCost)*Sessions,0) AS Cost,        
+       medium AS Medium, 
+          CASE  
+              WHEN REGEXP_CONTAINS(campaign,"_sa_|_sac_") THEN "SA" 
+              WHEN REGEXP_CONTAINS(campaign,"_cc_") THEN "CC" 
+              WHEN REGEXP_CONTAINS(campaign,"_dc_") THEN "DC"        
+              WHEN REGEXP_CONTAINS(campaign,"_rko_") THEN "SME" 
+              WHEN REGEXP_CONTAINS(campaign,"_ml_") THEN "ML / ML REF" 
+              WHEN REGEXP_CONTAINS(campaign,"_pl_") THEN "PL / PL REF / PL Auto"                  
+              ELSE "Other" 
+          END      
+       AS Product, TagNTB 
+FROM ( 
+SELECT date, Sessions, source, medium, campaign, TagNTB, SesCost,
+       CONCAT(SUBSTR(date, 0, 4),"-",SUBSTR(SUBSTR(date, 0, 6),-2),"-",SUBSTR(date,-2)) AS DAT,
+       SUBSTR(date, 0, 4) AS YEAR,
+       SUBSTR(SUBSTR(date, 0, 6),-2) AS MONTH,
+       SUBSTR(date,-2) AS DAY
+FROM ( 
+SELECT date, 
+       COUNT(sessionId) OVER (PARTITION BY date, source, medium, campaign, TagNTB) AS Sessions, 
+       source, medium, campaign, TagNTB, SesCost,
+       ROW_NUMBER() OVER (PARTITION BY date, source, medium, campaign, TagNTB) AS ROW 
+FROM ( 
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ДОБАВЛЯЕМ СЕССИЯМ СТОИМОСТЬ
+SELECT SesConCat.date AS date, SesConCat.Sessions AS Sessions, SesConCat.sessionId AS sessionId, SesConCat.source AS source, SesConCat.medium AS medium, SesConCat.campaign AS campaign, 
+       SesConCat.TagNTB AS TagNTB, CostConCat.SesCost AS SesCost 
+FROM ( 
+
+SELECT date, Sessions, sessionId, source, medium, campaign, ConCat, TagNTB 
+FROM ( 
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ПРИСВАИВАЕМ СЕССИЯМ ИДЕТИФИКАТОР NTB
+SELECT t3.date AS date, t3.Sessions AS Sessions, t3.sessionId AS sessionId, t3.source AS source, t3.medium AS medium, 
+       T3.campaign AS campaign, T3.ConCat AS ConCat, IF(T4.SESNTB IS NULL,"yes",T4.SESNTB) AS TagNTB,
+       ROW_NUMBER() OVER (PARTITION BY date, sessionId) AS ROW
+FROM ( 
+SELECT date, COUNT(sessionId) AS Sessions, sessionId as sessionId, source, medium,  
+       if(REGEXP_CONTAINS(campaign,r"%2C|%2c"),REGEXP_REPLACE(campaign,r"%2C|%2c",","),campaign) AS campaign,  
+       CONCAT(CAST(date AS STRING),source, medium,if(REGEXP_CONTAINS(campaign,r"%2C|%2c"),REGEXP_REPLACE(campaign,r"%2C|%2c",","),campaign)) AS ConCat 
+FROM (  
+SELECT date, sessionId, source, medium, 
+       if(REGEXP_CONTAINS(campaign,r"%3A|%3a|%253A|%253a"),REGEXP_REPLACE(campaign,r"%3A|%3a|%253A|%253a",":"),campaign) AS campaign    
+FROM ( 
+
+SELECT date, sessionId, source, medium, campaign
+FROM (
+SELECT *,
+       ROW_NUMBER() OVER (PARTITION BY date, sessionId) AS ROW
+FROM (
+SELECT date, IF(customDimensions.index=4,customDimensions.value,NULL) AS sessionId,
+       trafficSource.source AS source, trafficSource.medium AS medium,
+       if(REGEXP_CONTAINS(trafficSource.campaign,r"%7C|%7c|%257C|%257c"),REGEXP_REPLACE(trafficSource.campaign,r"%7C|%7c|%257C|%257c","|"),trafficSource.campaign) AS campaign
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h
+WHERE
+      _TABLE_SUFFIX BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'0101') AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
+      AND trafficSource.medium = "affiliate"
+GROUP BY date, sessionId, source, medium, campaign
+) AS t0
+WHERE sessionId IS NOT NULL
+) AS tROW
+WHERE ROW=1
+
+) AS t1 
+) AS t2 
+GROUP BY date, sessionId, source, medium, campaign, ConCat 
+) AS t3 
+
+LEFT JOIN ( 
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ТАБЛИЦА С NTB ИНДЕТИФИКАТОРАМИ
+SELECT * 
+FROM `raiffeisen-owox.Dictionary_US.NTB_Identification_Query`  
+
+) AS t4 
+ON t3.sessionId=t4.TsessionId
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+) t5
+WHERE ROW=1
+
+) AS SesConCat 
+
+LEFT JOIN ( 
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ТАБЛИЦА С ЦЕНАМИ
+SELECT *, CONCAT(date,source,medium,campaign) AS ConCat, 
+       Cost/Sessions AS SesCost 
+FROM ( 
+SELECT ConCatTraf.date AS date, ConCatTraf.Sessions AS Sessions, ConCatTraf.source AS source, ConCatTraf.medium AS medium, ConCatTraf.campaign AS campaign, 
+       SUM(ConCatCost.adCost) AS Cost 
+FROM ( 
+SELECT date, COUNT(sessionId) AS Sessions, source, medium,  
+       if(REGEXP_CONTAINS(campaign,r"%2C|%2c"),REGEXP_REPLACE(campaign,r"%2C|%2c",","),campaign) AS campaign, 
+       CONCAT(date,source, medium,if(REGEXP_CONTAINS(campaign,r"%2C|%2c"),REGEXP_REPLACE(campaign,r"%2C|%2c",","),campaign)) AS ConCat 
+FROM (        
+SELECT date, sessionId, source, medium,  
+       if(REGEXP_CONTAINS(campaign,r"%3A|%3a|%253A|%253a"),REGEXP_REPLACE(campaign,r"%3A|%3a|%253A|%253a",":"),campaign) AS campaign    
+FROM ( 
+
+SELECT date, sessionId, source, medium, campaign
+FROM (
+SELECT *,
+       ROW_NUMBER() OVER (PARTITION BY date, sessionId) AS ROW
+FROM (
+SELECT date, IF(customDimensions.index=4,customDimensions.value,NULL) AS sessionId,
+       trafficSource.source AS source, trafficSource.medium AS medium,
+       if(REGEXP_CONTAINS(trafficSource.campaign,r"%7C|%7c|%257C|%257c"),REGEXP_REPLACE(trafficSource.campaign,r"%7C|%7c|%257C|%257c","|"),trafficSource.campaign) AS campaign
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h
+WHERE
+      _TABLE_SUFFIX BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'0101') AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
+      AND trafficSource.medium = "affiliate"
+GROUP BY date, sessionId, source, medium, campaign
+) AS t0
+WHERE sessionId IS NOT NULL
+) AS tROW
+WHERE ROW=1
+
+) AS t1 
+) AS t2 
+GROUP BY date, source, medium, campaign, ConCat
+
+) AS ConCatTraf 
+
+LEFT JOIN ( 
+
+SELECT date, sessions, adCost, source, medium, 
+       if(REGEXP_CONTAINS(campaign,r"%2C|%2c"),REGEXP_REPLACE(campaign,r"%2C|%2c",","),campaign) AS campaign, 
+       CONCAT(CAST(date AS STRING),source, medium,if(REGEXP_CONTAINS(campaign,r"%2C|%2c"),REGEXP_REPLACE(campaign,r"%2C|%2c",","),campaign)) AS ConCat       
+FROM (        
+SELECT date, sessions, adCost, source, medium, 
+       if(REGEXP_CONTAINS(campaign,r"%3A|%3a|%253A|%253a"),REGEXP_REPLACE(campaign,r"%3A|%3a|%253A|%253a",":"),campaign) AS campaign   
+FROM ( 
+SELECT date, sessions, adCost, source, medium,  
+       if(REGEXP_CONTAINS(campaign,r"%7C|%7c|%257C|%257c"),REGEXP_REPLACE(campaign,r"%7C|%7c|%257C|%257c","|"),campaign) AS campaign    
+FROM `raiffeisen-owox.OWOXBI_CostData.CostData_*` 
+WHERE
+      _TABLE_SUFFIX BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'0101') AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
+      AND medium = "affiliate"     
+GROUP BY date, sessions, adCost, source, medium, campaign 
+) AS t1 
+) AS t2 
+
+) ConCatCost 
+
+ON ConCatTraf.ConCat=ConCatCost.ConCat 
+GROUP BY date, Sessions, source, medium, campaign 
+) AS t3 
+
+) AS CostConCat 
+ON SesConCat.ConCat = CostConCat.ConCat 
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+) AS t1 
+) AS t2 
+WHERE ROW=1
+) AS t3

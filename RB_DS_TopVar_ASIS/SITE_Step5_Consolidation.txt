@@ -1,0 +1,35 @@
+SELECT DATE(Year,Month,1) AS Date, *
+FROM (
+SELECT Month,	Year,
+       SUM(Sessions) AS Sessions,
+       SUM(Leads) AS Leads,
+       SUM(QLeads) AS QLeads,
+       SUM(Issues) AS Issues,
+       SUM(Cost) AS Cost, TagNTB,	Product, Medium, "FALSE" AS VB, "FALSE" AS BrandFormance			
+FROM (
+
+SELECT Month, Year,
+       SUM(Sessions) OVER (PARTITION BY Year, Month, Medium, TagNTB, Product) AS Sessions,
+       Leads, QLeads, Issues,
+       SUM(Cost) OVER (PARTITION BY Year, Month, Medium, TagNTB, Product) AS Cost,        
+       TagNTB, Product, medium AS Medium 
+FROM `raiffeisen-owox.RB_DS_TopVar_ASIS.SITE_Step1_Sessions`
+
+UNION ALL
+
+SELECT Month, Year, Sessions, Leads, QLeads, Issues, Cost, NTB AS TagNTB, Product, Medium AS Medium
+FROM `raiffeisen-owox.RB_DS_TopVar_ASIS.SITE_Step2_Leads` 
+
+UNION ALL
+
+SELECT Month, Year, Sessions, Leads, QLeads, Issues, Cost, NTB AS TagNTB, Product, Medium AS Medium
+FROM `raiffeisen-owox.RB_DS_TopVar_ASIS.SITE_Step3_QLeads` 
+
+UNION ALL
+
+SELECT Month, Year, Sessions, Leads, QLeads, Issues, Cost, NTB AS TagNTB, Product, Medium AS Medium
+FROM `raiffeisen-owox.RB_DS_TopVar_ASIS.SITE_Step4_Issues`
+
+) AS t1
+GROUP BY Month,	Year,	TagNTB,	Product, Medium, VB
+) AS t2

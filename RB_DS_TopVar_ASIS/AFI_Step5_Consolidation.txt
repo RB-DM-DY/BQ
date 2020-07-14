@@ -1,0 +1,39 @@
+SELECT DATE(Year,Month,1) AS Date, *
+FROM (
+SELECT Month,	Year,
+       SUM(Sessions) AS Sessions,
+       SUM(Leads) AS Leads,
+       SUM(QLeads) AS QLeads,
+       SUM(Issues) AS Issues,
+       SUM(Cost) AS Cost, TagNTB,	Product, Medium, "FALSE" AS VB, "FALSE" AS BrandFormance	
+FROM (
+SELECT CAST(IF(STARTS_WITH(Month,"0"),SUBSTR(Month, -1),Month) AS INT64) AS Month,
+       CAST(Year AS INT64) AS Year, Sessions, Leads, QLeads, Issues, Cost,
+       TagNTB, Product, CAST(Medium AS STRING) AS Medium
+FROM (
+SELECT Month, Year,
+       SUM(Sessions) OVER (PARTITION BY Year, Month, Medium, TagNTB, Product) AS Sessions,
+       Leads, QLeads, Issues,
+       SUM(Cost) OVER (PARTITION BY Year, Month, Medium, TagNTB, Product) AS Cost,        
+       TagNTB, Product, medium AS Medium 
+FROM `raiffeisen-owox.RB_DS_TopVar_ASIS.AFI_Step1_Sessions`
+) AS t1
+GROUP BY Month, Year, Sessions, Leads, QLeads, Issues, Cost, Product, TagNTB, Medium
+UNION ALL
+SELECT CAST(Month AS INT64) AS Month, 
+       CAST(Year AS INT64) AS Year, Sessions, Leads, QLeads, Issues, Cost,
+       NTB AS TagNTB, Product, CAST(Medium AS STRING) AS Medium
+FROM `raiffeisen-owox.RB_DS_TopVar_ASIS.AFI_Step2_Leads` 
+UNION ALL
+SELECT CAST(Month AS INT64) AS Month, 
+       CAST(Year AS INT64) AS Year, Sessions, Leads, QLeads, Issues, Cost,
+       NTB AS TagNTB, Product, CAST(Medium AS STRING) AS Medium
+FROM `raiffeisen-owox.RB_DS_TopVar_ASIS.AFI_Step3_QLeads` 
+UNION ALL
+SELECT CAST(Month AS INT64) AS Month, 
+       CAST(Year AS INT64) AS Year, Sessions, Leads, QLeads, Issues, Cost,
+       NTB AS TagNTB, Product, CAST(Medium AS STRING) AS Medium
+FROM `raiffeisen-owox.RB_DS_TopVar_ASIS.AFI_Step4_Issues` 
+) AS t1
+GROUP BY Month,	Year,	TagNTB,	Product, Medium, VB, BrandFormance
+) AS t2

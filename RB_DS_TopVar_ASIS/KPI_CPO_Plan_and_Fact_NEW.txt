@@ -1,0 +1,326 @@
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+-----------------------------------------------         BUILDING TABLES          ----------------------------------------------
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+WITH AFI AS (
+SELECT Date, Month, Year, 
+       SUM(Sessions) AS Sessions,
+       SUM(Leads) AS Leads,
+       SUM(QLeads) AS QLeads,
+       SUM(Issues) AS Issues,
+       SUM(Cost) AS Cost,
+       NTB AS TagNTB,	
+       CASE 
+           WHEN Product="PL / PL REF / PL Auto" THEN "PL"
+           WHEN Product="CC" THEN "CC"
+           WHEN Product="DC" THEN "DC" 
+           WHEN Product="ML / ML REF" THEN "ML"
+           WHEN Product="SA" THEN "SA"
+           WHEN Product="TD" THEN "TD"
+           WHEN Product="SME" THEN "SME" 
+           WHEN Product="Premium Product" THEN "Premium"
+           ELSE "Other"
+       END AS Product,
+       Medium, VB, BrandFormance,	CAST(BFName AS STRING) AS BFName, API
+FROM (       
+SELECT *
+FROM `raiffeisen-owox.RB_DS_TopVar_ASIS.AFI_Step1_Sessions_NEW`
+UNION ALL
+SELECT *
+FROM `raiffeisen-owox.RB_DS_TopVar_ASIS.AFI_Step2_Leads_NEW`
+UNION ALL
+SELECT *
+FROM `raiffeisen-owox.RB_DS_TopVar_ASIS.AFI_Step3_QLeads_NEW`
+UNION ALL
+SELECT *
+FROM `raiffeisen-owox.RB_DS_TopVar_ASIS.AFI_Step4_Issues_NEW`
+) AS t1
+GROUP BY Date, Month,	Year, NTB, Product, Medium, VB, BrandFormance, BFName, API
+),
+CPC AS (
+SELECT Date, Month, Year, 
+       SUM(Sessions) AS Sessions,
+       SUM(Leads) AS Leads,
+       SUM(QLeads) AS QLeads,
+       SUM(Issues) AS Issues,
+       SUM(Cost) AS Cost,
+       TagNTB,	
+       CASE 
+           WHEN Product="PL / PL REF / PL Auto" THEN "PL"
+           WHEN Product="CC" THEN "CC"
+           WHEN Product="DC" THEN "DC" 
+           WHEN Product="ML / ML REF" THEN "ML"
+           WHEN Product="SA" THEN "SA"
+           WHEN Product="TD" THEN "TD"
+           WHEN Product="SME" THEN "SME"
+           WHEN Product="Premium Product" THEN "Premium"
+           ELSE "Other"
+       END AS Product,
+       Medium, VB, BrandFormance,	BFName, API
+FROM (       
+SELECT *
+FROM `raiffeisen-owox.RB_DS_TopVar_ASIS.CPC_Step1_Sessions_NEW`
+UNION ALL
+SELECT *
+FROM `raiffeisen-owox.RB_DS_TopVar_ASIS.CPC_Step2_Leads_NEW`
+UNION ALL
+SELECT *
+FROM `raiffeisen-owox.RB_DS_TopVar_ASIS.CPC_Step3_QLeads_NEW`
+UNION ALL
+SELECT *
+FROM `raiffeisen-owox.RB_DS_TopVar_ASIS.CPC_Step4_Issues_NEW`
+) AS t1
+GROUP BY Date, Month,	Year, TagNTB, Product, Medium, VB, BrandFormance,	BFName, API
+),
+SITE AS (
+SELECT Date, Month, Year, 
+       SUM(Sessions) AS Sessions,
+       SUM(Leads) AS Leads,
+       SUM(QLeads) AS QLeads,
+       SUM(Issues) AS Issues,
+       SUM(Cost) AS Cost,
+       NTB AS TagNTB,	
+       CASE 
+           WHEN Product="PL / PL REF / PL Auto" THEN "PL"
+           WHEN Product="CC" THEN "CC"
+           WHEN Product="DC" THEN "DC" 
+           WHEN Product="ML / ML REF" THEN "ML"
+           WHEN Product="SA" THEN "SA"
+           WHEN Product="TD" THEN "TD"
+           WHEN Product="SME" THEN "SME"
+           WHEN Product="Premium Product" THEN "Premium"
+           ELSE "Other"
+       END AS Product,
+       Medium, VB, BrandFormance,	CAST(BFName AS STRING) AS BFName, API
+FROM (       
+SELECT *
+FROM `raiffeisen-owox.RB_DS_TopVar_ASIS.SITE_Step1_Sessions_NEW`
+UNION ALL
+SELECT *
+FROM `raiffeisen-owox.RB_DS_TopVar_ASIS.SITE_Step2_Leads_NEW`
+UNION ALL
+SELECT *
+FROM `raiffeisen-owox.RB_DS_TopVar_ASIS.SITE_Step3_QLeads_NEW`
+UNION ALL
+SELECT *
+FROM `raiffeisen-owox.RB_DS_TopVar_ASIS.SITE_Step4_Issues_NEW`
+) AS t1
+GROUP BY Date, Month,	Year, TagNTB, Product, Medium, VB, BrandFormance,	BFName, API
+),
+CALENDAR AS (
+SELECT *
+FROM `raiffeisen-owox.RB_DS_TopVar_ASIS.0_Calendar_Dictionary`
+),
+PLAN AS (
+SELECT *
+FROM `raiffeisen-owox.Dictionary_US.Target_MBO`
+),
+LASTUPDATE AS (
+SELECT *
+FROM (
+SELECT Product,
+       MAX(LastDate) OVER (PARTITION BY Product ORDER BY Date ASC ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS LastDate
+FROM (
+SELECT Date,        
+       IF(REGEXP_CONTAINS(Product,R"Insurance"),"Other",
+       CASE 
+           WHEN Product="PL / PL REF / PL Auto" THEN "PL"
+           WHEN Product="CC" THEN "CC"
+           WHEN Product="DC" THEN "DC" 
+           WHEN Product="ML / ML REF" THEN "ML"
+           WHEN Product="SA" THEN "SA"
+           WHEN Product="TD" THEN "TD"
+           WHEN Product="SME" THEN "SME"
+           WHEN Product="Premium Product" THEN "Premium"
+           ELSE "Other"
+       END) AS Product, LastDate
+FROM (
+SELECT *,
+       IF(CAST(Date AS STRING)=CAST(LastDate AS STRING),TRUE,FALSE) AS TRE
+FROM (       
+SELECT *,
+       LAST_VALUE(Date) OVER (PARTITION BY Product ORDER BY Date ASC ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS LastDate
+FROM (       
+SELECT Date, Product
+FROM (
+SELECT *,
+       ROW_NUMBER() OVER (PARTITION BY Date, Product) AS ROW
+FROM (
+SELECT DATE(LeadDate) AS Date,-- leadid AS LeadID,
+       CASE 
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Credit') THEN 'CC'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Debit|IPayroll|MasterCard|Gold') THEN 'DC'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Premium Direct') THEN 'Premium Product'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Mortgage') THEN 'ML / ML REF'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Personal Loans') THEN 'PL / PL REF / PL Auto'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Saving Accounts') THEN 'SA'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Standard Term Deposits') THEN 'TD'           
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'RKO') THEN 'SME'
+       ELSE 'Other' END AS Product
+FROM `raiffeisen-owox.Orders_CRM.CRM_orders`
+WHERE CAST(DATE(LeadDate) AS STRING) BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'-01-01') AND CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING)
+) AS t1
+) AS t2
+WHERE ROW=1 AND REGEXP_CONTAINS(CAST(EXTRACT(YEAR FROM Date) AS STRING),CAST(EXTRACT(YEAR FROM CURRENT_DATE()) AS STRING))
+ORDER BY Product, Date
+) AS t3
+) AS t4
+) AS t5
+WHERE TRE IS TRUE
+) AS t6
+) AS t7
+GROUP BY Product, LastDate
+)
+
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+-----------------------------------------------            START QUERY           ----------------------------------------------
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+
+
+-------------------------------------------------------------------------------------------------------------------------------
+-- ВСТРАИВАЕМ СУМАРНЫЙ ГОДОВОЙ ПЛАН ДЛЯ КАЖДОЙ СТРОКИ
+SELECT Date, Month, Year, 
+       FactSessions, FactLeads, FactQLeads, FactIssues,	FactCost,
+       PlanSessions, PlanLeads, PlanQleads, PlanIssues, PlanCost,
+       IF(TagNTB="yes","NTB","EXIST") AS TagNTB,
+       Product,	GroupChannel,	Source,	Medium,	VB,	BrandFormance, BFName, API, 
+       PlanFilter,	UpDate,	Level, PlanIssuesYear, PlanCostYear
+FROM (       
+SELECT t1.*,
+       t2.Issues AS PlanIssuesYear,	t2.Cost AS PlanCostYear
+FROM (
+-------------------------------------------------------------------------------------------------------------------------------
+-- НАДСТРАИВАЕМ ДАННЫЕ ДЛЯ СОВМЕЩЕНИЯ С MIDDLE (ТРЕБУЕТСЯ ДОРАБОТКА)
+SELECT Date, Month, Year, 
+       FactSessions, FactLeads, FactQLeads, FactIssues, FactCost, 
+       PlanSessions, PlanLeads, PlanQleads, PlanIssues, PlanCost, 
+       TagNTB, Product, 
+       Medium AS GroupChannel,'don`t use' AS Source, 'don`t use' AS Medium,
+       VB, BrandFormance, BFName, API, PlanFilter, UpDate, "MBO" AS Level
+FROM (       
+-------------------------------------------------------------------------------------------------------------------------------
+-- ДОБАВИЛИ ДАТУ ПОСЛЕДНЕГО ОБНОВЛЕНИЯ CRM_Orders
+SELECT t1.*,
+       t2.LastDate AS UpDate
+FROM (
+-------------------------------------------------------------------------------------------------------------------------------
+-- ФИНАЛЬНАЯ ТАБЛИЦА ДАННЫХ
+SELECT *,
+       CASE
+           WHEN Product="SME" AND REGEXP_CONTAINS(Medium,R"affiliate") THEN "EXCLUDE" --!!!!!!!!!!!!!!!!!!!!!ранее было WHEN Product="SME" AND REGEXP_CONTAINS(Medium,R"cpc|affiliate") THEN "EXCLUDE"
+           WHEN REGEXP_CONTAINS(Product,R"SA|TD") AND Medium="affiliate" THEN "EXCLUDE"    
+--           WHEN REGEXP_CONTAINS(Product,R"PL") AND Medium="cpc" AND REGEXP_CONTAINS(VB,R"FALSE") THEN "EXCLUDE"     
+           ELSE "INCLUDE"
+       END AS PlanFilter
+FROM (       
+SELECT IF(Date IS NOT NULL,Date,PDate) AS Date,
+       IF(Date IS NOT NULL,Month,PMonth) AS Month,
+       IF(Date IS NOT NULL,Year,PYear) AS Year,
+       Sessions AS FactSessions, Leads AS FactLeads, QLeads AS FactQLeads, Issues AS FactIssues, Cost AS FactCost,
+       PSessions AS PlanSessions, PLeads AS PlanLeads, PQleads AS PlanQleads, PIssues AS PlanIssues, PCost AS PlanCost,       
+       IF(Date IS NOT NULL,TagNTB,PTagNTB) AS TagNTB,
+       IF(Date IS NOT NULL,Product,PProduct) AS Product,
+       IF(Date IS NOT NULL,Medium,PMedium) AS Medium,
+       IF(Date IS NOT NULL,VB,PVB) AS VB,       
+       IF(Date IS NOT NULL,BrandFormance,PBrandFormance) AS BrandFormance,       
+       IF(Date IS NOT NULL,BFName,PBFName) AS BFName,
+       IF(Date IS NOT NULL,API,PAPI) AS API       
+FROM (
+-------------------------------------------------------------------------------------------------------------------------------
+--ОБЪЕДИНИЛИ ФАКТ И ПЛАН
+SELECT t1.*, 
+       t2.Date AS PDate, t2.Month AS PMonth,	t2.Year AS PYear,	t2.Product AS PProduct, 
+       t2.Sessions AS PSessions, t2.Leads AS PLeads, t2.Qleads AS PQleads, t2.Issues AS PIssues, t2.Cost AS PCost,
+       t2.Medium AS PMedium, t2.TagNTB AS PTagNTB, t2.BrandFormance AS PBrandFormance, t2.VB AS PVB, t2.BFName AS PBFName, t2.API AS PAPI
+FROM (
+SELECT *
+FROM AFI
+UNION ALL
+SELECT *
+FROM CPC
+UNION ALL
+SELECT *
+FROM SITE
+) AS t1
+FULL JOIN (
+-------------------------------------------------------------------------------------------------------------------------------
+--РАЗНЕСЛИ ПЛАНЫ ПО ДНЯМ ЛИНЕЙНО
+SELECT Date, Month,	Year,	Product, 
+       Sessions/Dublicate AS Sessions, 
+       Leads/Dublicate AS Leads, 
+       Qleads/Dublicate AS Qleads, 
+       Issues/Dublicate AS Issues, 
+       Cost/Dublicate AS Cost,
+       Medium, TagNTB, BrandFormance, VB, "NULL" AS BFName, "FORM_LEAD" AS API
+FROM (
+SELECT Date, Month,	Year,	Product, Sessions, Leads, Qleads, Issues, Cost, Medium, TagNTB, BrandFormance, VB,
+       COUNT(DateMonth) OVER (PARTITION BY Month,	Year, Product, Medium,	TagNTB,	BrandFormance, VB) AS Dublicate
+FROM (
+SELECT t1.Date, t2.*
+FROM (
+SELECT CurrentYearDate AS Date, EXTRACT(MONTH FROM CurrentYearDate) AS Month, EXTRACT(YEAR FROM CurrentYearDate) AS Year
+FROM CALENDAR
+) AS t1
+LEFT JOIN (
+SELECT *
+FROM PLAN
+) AS t2
+ON t1.Month=t2.Month AND t1.Year=t2.Year
+--WHERE t2.Month=1
+) AS t1
+) AS t2
+-------------------------------------------------------------------------------------------------------------------------------
+) AS t2
+ON t1.Date=t2.Date AND
+   t1.Month=t2.Month AND
+   t1.Year=t2.Year AND
+   t1.TagNTB=t2.TagNTB AND
+   t1.Product=t2.Product AND
+   t1.Medium=t2.Medium AND
+   t1.VB=t2.VB AND
+   t1.BrandFormance=t2.BrandFormance AND
+   t1.BFName=t2.BFName AND
+   t1.API=t2.API   
+-------------------------------------------------------------------------------------------------------------------------------
+) AS t1
+) AS t2
+-------------------------------------------------------------------------------------------------------------------------------
+) AS t1
+LEFT JOIN (
+SELECT *
+FROM LASTUPDATE
+) AS t2
+ON t1.Product=t2.Product
+-------------------------------------------------------------------------------------------------------------------------------
+) AS t1
+--UNION ALL
+--SELECT *
+--FROM MEDIUM
+-------------------------------------------------------------------------------------------------------------------------------
+) AS t1
+LEFT JOIN (
+SELECT *
+FROM (
+SELECT Year, Product,
+       SUM(Sessions) OVER (PARTITION BY Year,	Product, Medium, TagNTB, BrandFormance,	VB, BFName, API) AS Sessions,
+       SUM(Leads) OVER (PARTITION BY Year,	Product, Medium, TagNTB, BrandFormance,	VB, BFName, API) AS Leads,
+       SUM(Qleads) OVER (PARTITION BY Year,	Product, Medium, TagNTB, BrandFormance,	VB, BFName, API) AS Qleads,  
+       SUM(Issues) OVER (PARTITION BY Year,	Product, Medium, TagNTB, BrandFormance,	VB, BFName, API) AS Issues, 
+       SUM(Cost) OVER (PARTITION BY Year,	Product, Medium, TagNTB, BrandFormance,	VB, BFName, API) AS Cost,   
+       Medium, TagNTB, BrandFormance,	VB, BFName, API
+FROM (
+SELECT *, "NULL" AS BFName, "FORM_LEAD" AS API
+FROM PLAN
+) AS t1
+) AS t2
+GROUP BY Year, Product, Sessions, Leads,	Qleads,	Issues,	Cost,	Medium,	TagNTB,	BrandFormance, VB, BFName, API
+) AS t2
+ON t1.Year=t2.Year AND
+   t1.TagNTB=t2.TagNTB AND
+   t1.Product=t2.Product AND
+   t1.Medium=t2.Medium AND
+   t1.VB=t2.VB AND
+   t1.BrandFormance=t2.BrandFormance AND
+   t1.BFName=t2.BFName AND
+   t1.API=t2.API   
+) AS t1   
+-------------------------------------------------------------------------------------------------------------------------------

@@ -1,0 +1,444 @@
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+-----------------------------------------------         BUILDING TABLES          ----------------------------------------------
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+--------------------------------------------------------------------------------------------------------------------------------
+
+WITH AFI_SESSIONS AS (--<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+SELECT date, COUNT(sessionId) AS Sessions, sessionId as sessionId, source, medium,  
+       if(REGEXP_CONTAINS(campaign,r"%2C|%2c"),REGEXP_REPLACE(campaign,r"%2C|%2c",","),campaign) AS campaign,  
+       CONCAT(CAST(date AS STRING),source, medium,if(REGEXP_CONTAINS(campaign,r"%2C|%2c"),REGEXP_REPLACE(campaign,r"%2C|%2c",","),campaign)) AS ConCat 
+FROM (  
+SELECT date, sessionId, source, medium, 
+       if(REGEXP_CONTAINS(campaign,r"%3A|%3a|%253A|%253a"),REGEXP_REPLACE(campaign,r"%3A|%3a|%253A|%253a",":"),campaign) AS campaign    
+FROM ( 
+
+SELECT date, sessionId, source, medium, campaign
+FROM (
+SELECT *,
+       ROW_NUMBER() OVER (PARTITION BY date, sessionId) AS ROW
+FROM (
+SELECT date, IF(customDimensions.index=4,customDimensions.value,NULL) AS sessionId,
+       trafficSource.source AS source, trafficSource.medium AS medium,
+       if(REGEXP_CONTAINS(trafficSource.campaign,r"%7C|%7c|%257C|%257c"),REGEXP_REPLACE(trafficSource.campaign,r"%7C|%7c|%257C|%257c","|"),trafficSource.campaign) AS campaign
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h
+WHERE
+      _TABLE_SUFFIX BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'0101') AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
+      AND trafficSource.medium = "affiliate"
+GROUP BY date, sessionId, source, medium, campaign
+) AS t0
+WHERE sessionId IS NOT NULL
+) AS tROW
+WHERE ROW=1
+
+) AS t1 
+) AS t2 
+GROUP BY date, sessionId, source, medium, campaign, ConCat 
+),
+NTB AS (--<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+SELECT * 
+FROM `raiffeisen-owox.Dictionary_US.NTB_Identification_Query` 
+),
+AFI_COST_DATA AS (--<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+SELECT date, sessions, adCost, source, medium, 
+       if(REGEXP_CONTAINS(campaign,r"%2C|%2c"),REGEXP_REPLACE(campaign,r"%2C|%2c",","),campaign) AS campaign, 
+       CONCAT(CAST(date AS STRING),source, medium,if(REGEXP_CONTAINS(campaign,r"%2C|%2c"),REGEXP_REPLACE(campaign,r"%2C|%2c",","),campaign)) AS ConCat       
+FROM (        
+SELECT date, sessions, adCost, source, medium, 
+       if(REGEXP_CONTAINS(campaign,r"%3A|%3a|%253A|%253a"),REGEXP_REPLACE(campaign,r"%3A|%3a|%253A|%253a",":"),campaign) AS campaign   
+FROM ( 
+SELECT date, sessions, adCost, source, medium,  
+       if(REGEXP_CONTAINS(campaign,r"%7C|%7c|%257C|%257c"),REGEXP_REPLACE(campaign,r"%7C|%7c|%257C|%257c","|"),campaign) AS campaign    
+FROM `raiffeisen-owox.OWOXBI_CostData.CostData_*` 
+WHERE
+      _TABLE_SUFFIX BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'0101') AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
+      AND medium = "affiliate"     
+GROUP BY date, sessions, adCost, source, medium, campaign 
+) AS t1 
+) AS t2 
+),
+AFI_SESSIONS_PIVOT AS (--<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+--------------------------------------------------------------------------------------------------------------------------------
+--ПОД НОВЫЙ ВАРИАНТ
+SELECT CAST(Date AS DATE) AS Date, CAST(Month AS INT64) AS Month,	CAST(Year AS INT64) AS Year,
+       SUM(Sessions) AS Sessions,
+       SUM(Leads) AS Leads,
+       SUM(QLeads) AS QLeads,
+       SUM(Issues) AS Issues,
+       SUM(Cost) AS Cost,
+       NTB,	Product, Medium, VB, BrandFormance,	BFName, "FORM_LEAD" AS API
+FROM (
+SELECT DAT AS Date, MONTH AS Month, YEAR AS Year,
+       Sessions, 0 AS Leads, 0 AS QLeads, 0 AS Issues,
+       ROUND(IF(SesCost IS NULL,0,SesCost)*Sessions,0) AS Cost,
+       TagNTB AS NTB, 
+          CASE  
+              WHEN REGEXP_CONTAINS(campaign,"_sa_|_sac_") THEN "SA" 
+              WHEN REGEXP_CONTAINS(campaign,"_cc_|pr:cc") THEN "CC" 
+              WHEN REGEXP_CONTAINS(campaign,"_dc_") THEN "DC"        
+              WHEN REGEXP_CONTAINS(campaign,"_rko_") THEN "SME" 
+              WHEN REGEXP_CONTAINS(campaign,"_ml_") THEN "ML / ML REF" 
+              WHEN REGEXP_CONTAINS(campaign,"_pl_|pr:pl") THEN "PL / PL REF / PL Auto"                  
+              ELSE "Other" 
+          END      
+       AS Product, Medium, 
+       CASE 
+           WHEN REGEXP_CONTAINS(source,R"sovest|megafon") THEN "TRUE"
+           ELSE "FALSE"
+       END AS VB,	"FALSE" AS BrandFormance, "NULL" AS	BFName
+FROM (
+--------------------------------------------------------------------------------------------------------------------------------
+--ПОД СТАРЫЙ ВАРИАНТ
+SELECT date, Sessions, source, medium, campaign, TagNTB, SesCost,
+       CONCAT(SUBSTR(date, 0, 4),"-",SUBSTR(SUBSTR(date, 0, 6),-2),"-",SUBSTR(date,-2)) AS DAT,
+       SUBSTR(date, 0, 4) AS YEAR,
+       SUBSTR(SUBSTR(date, 0, 6),-2) AS MONTH,
+       SUBSTR(date,-2) AS DAY
+FROM ( 
+SELECT date, 
+       COUNT(sessionId) OVER (PARTITION BY date, source, medium, campaign, TagNTB) AS Sessions, 
+       source, medium, campaign, TagNTB, SesCost,
+       ROW_NUMBER() OVER (PARTITION BY date, source, medium, campaign, TagNTB) AS ROW 
+FROM ( 
+--------------------------------------------------------------------------------------------------------------------------------
+--ДОБАВЛЯЕМ СЕССИЯМ СТОИМОСТЬ
+SELECT SesConCat.date AS date, SesConCat.Sessions AS Sessions, SesConCat.sessionId AS sessionId, SesConCat.source AS source, SesConCat.medium AS medium, SesConCat.campaign AS campaign, 
+       SesConCat.TagNTB AS TagNTB, CostConCat.SesCost AS SesCost 
+FROM ( 
+
+SELECT date, Sessions, sessionId, source, medium, campaign, ConCat, TagNTB 
+FROM ( 
+--------------------------------------------------------------------------------------------------------------------------------
+--ПРИСВАИВАЕМ СЕССИЯМ ИДЕТИФИКАТОР NTB
+SELECT t3.date AS date, t3.Sessions AS Sessions, t3.sessionId AS sessionId, t3.source AS source, t3.medium AS medium, 
+       T3.campaign AS campaign, T3.ConCat AS ConCat, IF(T4.SESNTB IS NULL,"yes",T4.SESNTB) AS TagNTB,
+       ROW_NUMBER() OVER (PARTITION BY date, sessionId) AS ROW
+FROM ( 
+SELECT *
+FROM AFI_SESSIONS
+) AS t3 
+
+LEFT JOIN ( 
+--------------------------------------------------------------------------------------------------------------------------------
+--ТАБЛИЦА С NTB ИНДЕТИФИКАТОРАМИ
+SELECT * 
+FROM NTB
+) AS t4 
+ON t3.sessionId=t4.TsessionId
+--------------------------------------------------------------------------------------------------------------------------------
+) t5
+WHERE ROW=1
+
+) AS SesConCat 
+
+LEFT JOIN ( 
+--------------------------------------------------------------------------------------------------------------------------------
+--ТАБЛИЦА С ЦЕНАМИ
+SELECT *, CONCAT(date,source,medium,campaign) AS ConCat, 
+       Cost/Sessions AS SesCost 
+FROM ( 
+SELECT ConCatTraf.date AS date, ConCatTraf.Sessions AS Sessions, ConCatTraf.source AS source, ConCatTraf.medium AS medium, ConCatTraf.campaign AS campaign, 
+       SUM(ConCatCost.adCost) AS Cost 
+FROM ( 
+SELECT *
+FROM AFI_SESSIONS
+
+) AS ConCatTraf 
+
+LEFT JOIN ( 
+
+SELECT *      
+FROM AFI_COST_DATA
+
+) ConCatCost 
+
+ON ConCatTraf.ConCat=ConCatCost.ConCat 
+GROUP BY date, Sessions, source, medium, campaign 
+) AS t3 
+
+) AS CostConCat 
+ON SesConCat.ConCat = CostConCat.ConCat 
+--------------------------------------------------------------------------------------------------------------------------------
+) AS t1 
+) AS t2 
+WHERE ROW=1
+--) AS t3
+--------------------------------------------------------------------------------------------------------------------------------
+) AS t1
+) AS t2
+GROUP BY Date, Month,	Year, NTB,	Product, Medium, VB, BrandFormance,	BFName
+),
+AFI_COST_TARIFF AS (--<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+SELECT month,	year,	ProductGroup,	Source,	Medium,	LinearLead,	LinearQLead, LinearIssue, CostLead,	CostQLead, CostIssue,
+       CONCAT(CAST(month AS STRING),CAST(year AS STRING),ProductGroup,Source) AS ConCat
+FROM `raiffeisen-owox.Dictionary_US.Calculation_Price_Leads` 
+),
+AFI_LEADS_DATA AS (--<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+SELECT DATE(LeadDate) AS Date, leadid AS LeadID, PRODUCT_LINE AS ProductLine, 
+       CASE 
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Credit') THEN 'CC'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Debit|IPayroll|Premium Direct|MasterCard|Gold') THEN 'DC'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Mortgage') THEN 'ML / ML REF'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Personal Loans') THEN 'PL / PL REF / PL Auto'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Saving Accounts') THEN 'SA'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Standard Term Deposits') THEN 'TD' 
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'RKO') THEN 'SME'
+       ELSE 'Other' END AS Product, 
+       CASE 
+           WHEN REGEXP_CONTAINS(UTM_SOURCE,R'sravni') THEN 'sravni'
+           WHEN REGEXP_CONTAINS(UTM_SOURCE,R'banki') THEN 'banki'  
+           WHEN REGEXP_CONTAINS(UTM_SOURCE,R'leadgid') THEN 'leadgid'    
+           WHEN REGEXP_CONTAINS(UTM_SOURCE,R'linkprofit') THEN 'linkprofit'
+           WHEN REGEXP_CONTAINS(UTM_SOURCE,R'leads') THEN 'leads'
+           WHEN REGEXP_CONTAINS(UTM_SOURCE,R'cityads') THEN 'cityads'  
+           WHEN REGEXP_CONTAINS(UTM_SOURCE,R'cpahub') THEN 'cpahub'       
+           WHEN REGEXP_CONTAINS(UTM_SOURCE,R'masterlead') THEN 'masterlead'
+           WHEN REGEXP_CONTAINS(UTM_SOURCE,R'moneymatika') THEN 'moneymatika'
+           WHEN REGEXP_CONTAINS(UTM_SOURCE,R'vbru') THEN 'vbru'           
+           ELSE UTM_SOURCE
+       END AS Source,       
+       UTM_MEDIUM AS Medium,
+       NTB, STATUS AS StatusLead, APPROVAL AS ApprovalLead
+       
+FROM `raiffeisen-owox.Orders_CRM.CRM_orders` 
+WHERE UTM_MEDIUM = 'affiliate' 
+      AND CAST(DATE(LeadDate) AS STRING) BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'-01-01') AND CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING)
+),
+AFI_LEADS_PIVOT AS (--<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+--------------------------------------------------------------------------------------------------------------------------------
+--ПОД НОВЫЙ ДАШБОРД
+SELECT Date, Month,	Year,
+       0 AS Sessions,
+       SUM(Leads) AS Leads,       
+       0 AS QLeads,
+       0 AS Issues,  
+       SUM(Cost) AS Cost,
+       NTB, Product, Medium, VB, BrandFormance,	BFName, API
+FROM (
+SELECT Date, EXTRACT(MONTH FROM Date) AS Month, EXTRACT(YEAR FROM Date) AS Year, Leads, Product, Source, Medium, NTB, API, Leads*LeadPrice AS Cost,
+       CASE 
+           WHEN REGEXP_CONTAINS(source,R"sovest|megafon") THEN "TRUE"
+           ELSE "FALSE"
+       END AS VB,	"FALSE" AS BrandFormance, "NULL" AS	BFName       
+FROM (
+SELECT Date, 1 AS Leads, ProductLine, Product, Source, Medium, NTB, API, LeadPrice	
+FROM (
+--------------------------------------------------------------------------------------------------------------------------------
+--ДОБАВЛЕНИЕ ЦЕНЫ ЗА ЛИД
+SELECT Date, Leads,	ProductLine, Product,	Source,	Medium,	NTB, API, LeadPrice --ПОВТОРНО УНИКАЛИЗИРУЕМ ЛИДЫ
+FROM (
+SELECT Leads.Date AS Date, Leads.LeadID AS Leads, Leads.ProductLine AS ProductLine, Leads.Product AS Product, Leads.Source AS Source, Leads.Medium AS Medium,
+       Leads.NTB AS NTB, Leads.StatusLead AS StatusLead, Leads.ApprovalLead AS ApprovalLead, Leads.API AS API,
+       IF(Price.CostLead IS NULL,0,Price.CostLead) AS LeadPrice
+FROM (
+SELECT CONCAT(CAST(EXTRACT(MONTH FROM Date) AS STRING),CAST(EXTRACT(YEAR FROM Date) AS STRING),Product,Source) AS ConCat,
+       Date, LeadID, ProductLine, Product, Source, Medium, NTB, StatusLead, ApprovalLead, API
+FROM (
+SELECT Date, LeadID, ProductLine,	Product, Source, Medium, NTB,	StatusLead,	ApprovalLead,
+       CASE
+           WHEN STRPOS(LeadID,"API")>2 THEN "API_LEAD"
+           ELSE "FORM_LEAD"
+       END AS API
+FROM (
+SELECT *,
+       ROW_NUMBER() OVER (PARTITION BY Date, LeadID, ProductLine,	Product, Source, Medium, NTB,	StatusLead,	ApprovalLead) AS ROW
+FROM (
+SELECT *      
+FROM AFI_LEADS_DATA
+
+) AS t0
+) AS t1
+WHERE ROW=1-- AND REGEXP_CONTAINS(LeadID,R"API")
+) AS t0
+) AS Leads
+
+LEFT JOIN (
+
+SELECT *
+FROM AFI_COST_TARIFF  
+) AS Price
+
+ON Leads.ConCat=Price.ConCat
+) AS t1
+GROUP BY Date, Leads,	ProductLine, Product,	Source,	Medium,	NTB, API, LeadPrice
+--------------------------------------------------------------------------------------------------------------------------------
+) AS t1
+) AS t2
+--) AS t3
+--GROUP BY Month, Year, NTB, Product, Medium
+) AS t1
+GROUP BY Date, Month,	Year, NTB, Product, Medium, VB, BrandFormance, BFName, API
+),
+AFI_QLEADS_PIVOT AS (--<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+--------------------------------------------------------------------------------------------------------------------------------
+--ПОД НОВЫЙ ДАШБОРД
+SELECT Date, Month,	Year,
+       0 AS Sessions,
+       0 AS Leads,       
+       SUM(Leads) AS QLeads,
+       0 AS Issues,  
+       SUM(Cost) AS Cost,
+       NTB, Product, Medium, VB, BrandFormance,	BFName, API
+FROM (
+SELECT Date, EXTRACT(MONTH FROM Date) AS Month, EXTRACT(YEAR FROM Date) AS Year, Leads, Product, Source, Medium, NTB, Leads*LeadPrice AS Cost,
+       CASE 
+           WHEN REGEXP_CONTAINS(source,R"sovest|megafon") THEN "TRUE"
+           ELSE "FALSE"
+       END AS VB,	"FALSE" AS BrandFormance, "NULL" AS	BFName, API 
+FROM (
+SELECT Date, 1 AS Leads, ProductLine, Product, Source, Medium, NTB, API, LeadPrice	
+FROM (
+--------------------------------------------------------------------------------------------------------------------------------
+--ДОБАВЛЕНИЕ ЦЕНЫ ЗА ЛИД
+SELECT Date, Leads,	ProductLine, Product,	Source,	Medium,	NTB, API, LeadPrice --ПОВТОРНО УНИКАЛИЗИРУЕМ ЛИДЫ
+FROM (
+SELECT Leads.Date AS Date, Leads.LeadID AS Leads, Leads.ProductLine AS ProductLine, Leads.Product AS Product, Leads.Source AS Source, Leads.Medium AS Medium,
+       Leads.NTB AS NTB, Leads.StatusLead AS StatusLead, Leads.ApprovalLead AS ApprovalLead, Leads.API AS API, IF(Price.CostQLead IS NULL,0,Price.CostQLead) AS LeadPrice
+FROM (
+SELECT CONCAT(CAST(EXTRACT(MONTH FROM Date) AS STRING),CAST(EXTRACT(YEAR FROM Date) AS STRING),Product,Source) AS ConCat,
+       Date, LeadID, ProductLine, Product, Source, Medium, NTB, StatusLead, ApprovalLead, API
+FROM (
+SELECT Date, LeadID, ProductLine,	Product, Source, Medium, NTB,	StatusLead,	ApprovalLead, API
+FROM (
+SELECT *,
+       ROW_NUMBER() OVER (PARTITION BY Date, LeadID, ProductLine,	Product, Source, Medium, NTB,	StatusLead,	ApprovalLead) AS ROW
+FROM (
+
+SELECT *,
+       IF((REGEXP_CONTAINS(Product,r'PL|CC') and (StatusLead = 'lead' or StatusLead = 'open' or StatusLead = 'deal') and (ApprovalLead = 'pending' or
+           ApprovalLead = 'approved' or ApprovalLead = 'Approved' or ApprovalLead = 'approval' or ApprovalLead = 'Approval')),'QLead',
+       IF((REGEXP_CONTAINS(Product,r'DC|PD') and (StatusLead = 'open' or StatusLead = 'delivered' or StatusLead = 'active')),'QLead',
+       IF((REGEXP_CONTAINS(Product,r'ML') and (StatusLead = 'application' or StatusLead = 'deal')),'QLead',          
+       IF((REGEXP_CONTAINS(Product,r'SA|TD') and StatusLead = 'open'),'QLead',
+       IF((REGEXP_CONTAINS(Product,r'SME') and REGEXP_CONTAINS(StatusLead,R'Qlead|Scoring|Arrest_check|Application|Open')),'QLead',       
+       IF(Product = 'Other' and
+         (StatusLead = 'lead' or StatusLead = 'open' or StatusLead = 'deal' or StatusLead = 'delivered' or StatusLead = 'active') and 
+         (ApprovalLead = 'pending' or ApprovalLead = 'approved' or ApprovalLead = 'Approved' or ApprovalLead = 'approval' or ApprovalLead = 'Approval'),
+          'QLead','not')))))) as QLead,
+       CASE
+           WHEN STRPOS(LeadID,"API")>2 THEN "API_LEAD"
+           ELSE "FORM_LEAD"
+       END AS API          
+FROM (
+SELECT *
+FROM AFI_LEADS_DATA
+) AS t0
+) AS t1
+WHERE QLead="QLead"
+) AS t2
+WHERE ROW=1
+) AS t3
+) AS Leads
+
+LEFT JOIN (
+
+SELECT *
+FROM AFI_COST_TARIFF
+) AS Price
+
+ON Leads.ConCat=Price.ConCat
+) AS t1
+GROUP BY Date, Leads,	ProductLine, Product,	Source,	Medium,	NTB, API, LeadPrice
+--------------------------------------------------------------------------------------------------------------------------------
+) AS t1
+) AS t2
+--) AS t3
+--GROUP BY Month, Year, NTB, Product, Medium
+) AS t1
+GROUP BY Date, Month,	Year, NTB, Product, Medium, VB, BrandFormance, BFName, API
+),
+AFI_ISSUES_PIVOT AS (--<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+--------------------------------------------------------------------------------------------------------------------------------
+--ПОД НОВЫЙ ДАШБОРД
+SELECT Date, Month,	Year,
+       0 AS Sessions,
+       0 AS Leads,       
+       0 AS QLeads,
+       SUM(Leads) AS Issues,  
+       SUM(Cost) AS Cost,
+       NTB, Product, Medium, VB, BrandFormance,	BFName, API
+FROM (
+SELECT Date, EXTRACT(MONTH FROM Date) AS Month, EXTRACT(YEAR FROM Date) AS Year, Leads, Product, Source, Medium, NTB, Leads*LeadPrice AS Cost,
+       CASE 
+           WHEN REGEXP_CONTAINS(source,R"sovest|megafon") THEN "TRUE"
+           ELSE "FALSE"
+       END AS VB,	"FALSE" AS BrandFormance, "NULL" AS	BFName, API 
+FROM (
+SELECT Date, 1 AS Leads, ProductLine, Product, Source, Medium, NTB, API, LeadPrice	
+FROM (
+--------------------------------------------------------------------------------------------------------------------------------
+--ДОБАВЛЕНИЕ ЦЕНЫ ЗА ЛИД
+SELECT Date, Leads,	ProductLine, Product,	Source,	Medium,	NTB, API, LeadPrice --ПОВТОРНО УНИКАЛИЗИРУЕМ ЛИДЫ
+FROM (
+SELECT Leads.Date AS Date, Leads.LeadID AS Leads, Leads.ProductLine AS ProductLine, Leads.Product AS Product, Leads.Source AS Source, Leads.Medium AS Medium,
+       Leads.NTB AS NTB, Leads.StatusLead AS StatusLead, Leads.ApprovalLead AS ApprovalLead, Leads.API AS API, IF(Price.CostIssue IS NULL,0,Price.CostIssue) AS LeadPrice
+FROM (
+SELECT CONCAT(CAST(EXTRACT(MONTH FROM Date) AS STRING),CAST(EXTRACT(YEAR FROM Date) AS STRING),Product,Source) AS ConCat,
+       Date, LeadID, ProductLine, Product, Source, Medium, NTB, StatusLead, ApprovalLead, API
+FROM (
+SELECT Date, LeadID, ProductLine,	Product, Source, Medium, NTB,	StatusLead,	ApprovalLead, API
+FROM (
+SELECT *,
+       ROW_NUMBER() OVER (PARTITION BY Date, LeadID, ProductLine,	Product, Source, Medium, NTB,	StatusLead,	ApprovalLead) AS ROW
+FROM (
+
+SELECT *,
+       IF((REGEXP_CONTAINS(Product,r'PL|CC|ML') and (StatusLead = 'open' or StatusLead = 'deal') and (ApprovalLead = 'approved' or ApprovalLead = 'Approval'  or ApprovalLead = 'Approved')),'Issue',
+       IF((REGEXP_CONTAINS(Product,r'DC|SA|TD') and (StatusLead = 'open' or StatusLead = 'delivered' or StatusLead = 'active')),'Issue',
+       IF((REGEXP_CONTAINS(Product,r'SME') and REGEXP_CONTAINS(StatusLead,R'Open|open')),'Issue',    
+       IF(Product = 'Other' and (StatusLead = 'open' or StatusLead = 'deal' or StatusLead = 'delivered' or StatusLead = 'active') and 
+          (ApprovalLead = 'approved' or ApprovalLead = 'Approved' or ApprovalLead = 'approval' or ApprovalLead = 'Approval') ,'Issue','not')))) as Issue,
+       CASE
+           WHEN STRPOS(LeadID,"API")>2 THEN "API_LEAD"
+           ELSE "FORM_LEAD"
+       END AS API          
+FROM (
+
+SELECT *     
+FROM AFI_LEADS_DATA
+) AS t0
+) AS t1
+WHERE Issue="Issue"
+) AS t2
+WHERE ROW=1
+) AS t3
+) AS Leads
+
+LEFT JOIN (
+
+SELECT *
+FROM AFI_COST_TARIFF 
+) AS Price
+
+ON Leads.ConCat=Price.ConCat
+) AS t1
+GROUP BY Date, Leads,	ProductLine, Product,	Source,	Medium,	NTB, API, LeadPrice
+--------------------------------------------------------------------------------------------------------------------------------
+) AS t1
+) AS t2
+) AS t1
+GROUP BY Date, Month,	Year, NTB, Product, Medium, VB, BrandFormance, BFName, API
+)
+
+
+
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+-----------------------------------------------            START QUERY           ----------------------------------------------
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+--------------------------------------------------------------------------------------------------------------------------------
+
+--SELECT Year, SUM(Sessions) AS Sessions, SUM(Leads) AS Leads, SUM(QLeads) AS QLeads, SUM(Issues) AS Issues, SUM(Cost) AS Cost,
+--       NTB,	Product, Medium, VB, BrandFormance, BFName, API
+--FROM (       
+SELECT *
+FROM AFI_SESSIONS_PIVOT
+UNION ALL
+SELECT *
+FROM AFI_LEADS_PIVOT
+UNION ALL
+SELECT *
+FROM AFI_QLEADS_PIVOT
+UNION ALL
+SELECT *
+FROM AFI_ISSUES_PIVOT
+--) AS t1
+--GROUP BY Year, NTB,	Product, Medium, VB, BrandFormance, BFName, API

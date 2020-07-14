@@ -1,0 +1,379 @@
+WITH TRAFFIC AS ( --<<<<<<<<<<<<<<
+-------------------------------------------------------------------------------------------------------------------------------------------
+--ТАБЛИЦА С ТРАФИКОМ 
+SELECT DATE(CAST(SUBSTR(date,0,4) AS INT64),CAST(SUBSTR(SUBSTR(date, 0, 6),-2) AS INT64),CAST(SUBSTR(date,-2) AS INT64)) AS date,
+       sessionId, source, medium, campaign, keyword  
+FROM ( 
+SELECT date, sessionId, source, medium, 
+       if(REGEXP_CONTAINS(campaign,r"%2C|%2c"),REGEXP_REPLACE(campaign,r"%2C|%2c",","),campaign) AS campaign, keyword,
+       ROW_NUMBER() OVER (PARTITION BY sessionId) AS ROW       
+FROM ( 
+SELECT date, sessionId, source, medium, 
+       if(REGEXP_CONTAINS(campaign,r"%3A|%3a|%253A|%253a"),REGEXP_REPLACE(campaign,r"%3A|%3a|%253A|%253a",":"),campaign) AS campaign,
+       keyword
+FROM ( 
+SELECT date, sessionId, source, medium, campaign, keyword
+FROM (
+SELECT *,
+       ROW_NUMBER() OVER (PARTITION BY date, sessionId) AS ROW
+FROM (
+SELECT date, IF(customDimensions.index=4,customDimensions.value,NULL) AS sessionId,
+       trafficSource.source AS source, trafficSource.medium AS medium,
+       if(REGEXP_CONTAINS(trafficSource.campaign,r"%7C|%7c|%257C|%257c"),REGEXP_REPLACE(trafficSource.campaign,r"%7C|%7c|%257C|%257c","|"),trafficSource.campaign) AS campaign,
+       trafficSource.keyword AS keyword
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h
+WHERE
+      _TABLE_SUFFIX BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'0101') AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
+      AND trafficSource.medium = "cpc"
+GROUP BY date, sessionId, source, medium, campaign, keyword
+) AS t0
+WHERE sessionId IS NOT NULL
+) AS tROW
+WHERE ROW=1
+) AS t1 
+) As t2
+) AS t4  
+WHERE ROW=1
+-------------------------------------------------------------------------------------------------------------------------------------------
+),
+COST AS ( --<<<<<<<<<<<<<<
+-------------------------------------------------------------------------------------------------------------------------------------------
+--ТАБЛИЦА С РАСХОДАМИ
+SELECT date, sessionId, adCost, source, medium, campaign,
+       CONCAT(CAST(date AS STRING),source,medium,campaign) AS CostConCat
+FROM (       
+SELECT DATE(CAST(SUBSTR(date,0,4) AS INT64),CAST(SUBSTR(SUBSTR(date, 0, 6),-2) AS INT64),CAST(SUBSTR(date,-2) AS INT64)) AS date,
+       sessionId, adCost, source, medium, campaign
+FROM (
+
+SELECT date, sessionId,	SUM(adCost) AS adCost, source, medium, campaign, CostConCat
+FROM (
+
+SELECT date, "NULL" AS sessionId, adCost, source, medium, campaign,
+       CONCAT(CAST(date AS STRING),source,medium,campaign) AS CostConCat
+FROM (       
+SELECT date, source, medium,    
+       IF(REGEXP_CONTAINS(campaign,r"%2C|%2c"),REGEXP_REPLACE(campaign,r"%2C|%2c",","),campaign) AS campaign,   
+       adCost
+FROM (
+SELECT date, source, medium,    
+       IF(REGEXP_CONTAINS(campaign,r"%3A|%3a|%253A|%253a"),REGEXP_REPLACE(campaign,r"%3A|%3a|%253A|%253a",":"),campaign) AS campaign,   
+       adCost
+FROM (
+SELECT date, source, medium,    
+       IF(REGEXP_CONTAINS(campaign,r"%7C|%7c|%257C|%257c"),REGEXP_REPLACE(campaign,r"%7C|%7c|%257C|%257c","|"),campaign) AS campaign,
+       adCost
+FROM (
+SELECT date, source, medium, campaign, SUM(adCost) AS adCost
+FROM `raiffeisen-owox.OWOXBI_CostData.CostData_*`
+WHERE 
+      _TABLE_SUFFIX BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'0101') AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
+      AND medium = "cpc"   
+      AND adCost > 0
+GROUP BY date, source, medium, campaign   
+) AS t1
+) AS t2
+) AS t3
+) AS t4
+
+UNION ALL
+------
+/*Подключение расходов Publicis*/ 
+SELECT date, sessionId, adCost, source, medium, campaign,	CostConCat
+FROM (
+SELECT *,
+       IF(adCost=0,TRUE,FALSE) AS CheckCost
+FROM (       
+SELECT date, "NULL" sessionId,	SUM(cost) AS adCost, source, medium, campaign,
+       CONCAT(CAST(date AS STRING),source,medium,campaign) AS CostConCat
+FROM(       
+  SELECT date , campaign,'dbm' source,'cpc'	medium ,cost * visits / dayVisit cost
+  FROM(
+    SELECT date , campaign, source,	medium ,cost , visits , SUM(visits) OVER ( PARTITION by date) dayVisit
+    FROM(
+      SELECT date, trafficSource.campaign, trafficSource.source, trafficSource.medium,
+       SUM(totals.visits) visits
+      FROM `raiffeisen-owox.64807083.ga_sessions_*`
+      WHERE trafficSource.campaign LIKE '%publicis%'
+      AND date BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'0101') AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
+      GROUP BY date, trafficSource.campaign, trafficSource.source, trafficSource.medium
+      )
+  JOIN (SELECT FORMAT_DATE("%Y%m%d", day) day, SUM( cost ) cost FROM `raiffeisen-owox.OWOXBI_CostData.CostData_Publicis_DBM` GROUP BY day ) ON day = date
+  )
+)GROUP BY date, sessionId,	source, medium, campaign
+)
+)
+------
+UNION ALL
+
+SELECT date, sessionId, adCost, source, medium, campaign,	CostConCat
+FROM (
+SELECT *,
+       IF(adCost=0,TRUE,FALSE) AS CheckCost
+FROM (       
+SELECT date, sessionId,	SUM(adCost) AS adCost, source, medium, campaign,
+       CONCAT(CAST(date AS STRING),source,medium,campaign) AS CostConCat
+FROM (
+SELECT REPLACE(day,"-","") AS date, "NULL" AS sessionId, cost AS adCost, 
+       IF(REGEXP_CONTAINS(channel,"dir"),"yandex",channel)  AS source, ---!!!change "google" on channel
+       "cpc" AS medium, campaign, EXTRACT(YEAR FROM CAST(day AS DATE)) AS YEAR
+FROM `raiffeisen-owox.OWOXBI_CostData.ancore_ga2_campaign` 
+WHERE REGEXP_CONTAINS(campaign,"plt:mkb|mkb") 
+      OR channel="dbm"
+      AND cost<>0
+) AS t1
+WHERE YEAR<>EXTRACT(YEAR FROM CURRENT_DATE())-2
+GROUP BY date, sessionId,	source, medium, campaign
+) AS t2
+) AS t3
+WHERE CheckCost IS FALSE
+
+) AS t1
+GROUP BY date, sessionId,	source, medium, campaign, CostConCat
+
+) AS tNEW1
+) AS tNEW2
+-------------------------------------------------------------------------------------------------------------------------------------------
+),
+NTB AS ( --<<<<<<<<<<<<<<
+-------------------------------------------------------------------------------------------------------------------------------------------
+--ТАБЛИЦА С NTB
+SELECT *  
+--FROM `raiffeisen-owox.Dictionary_US.NTB_Identification_Query`
+FROM `raiffeisen-owox.Common_query.SessionNTB`
+-------------------------------------------------------------------------------------------------------------------------------------------
+),
+BF AS ( --<<<<<<<<<<<<<< --ТАБЛИЦА С BF
+SELECT BFName, CampaignIDCM, GA2.campaign as BFCamp, DateStart, DateFinish
+FROM `raiffeisen-owox.RB_DS_BrandFormance.Dictionary_BrandFormance_Dates`
+LEFT JOIN (SELECT GA2 FROM (SELECT campaign, cast(campaignId as STRING) as campaignId FROM `raiffeisen-owox.OWOXBI_CostData.ancore_ga2_campaign`) GA2) ON CampaignIDDV360=GA2.campaignId 
+),
+BFSessions AS ( --<<<<<<<<<<<<<<
+-------------------------------------------------------------------------------------------------------------------------------------------
+--ВЫДЕЛИЛИ ТРАФИК BRANDFORMANCE
+SELECT *
+FROM (
+SELECT t1.date,	t1.sessionId,	t1.source, t1.medium,	t1.campaign,
+       t2.BFName, t2.CampaignIDCM, t2.DateStart, t2.DateFinish
+FROM (       
+SELECT *
+FROM TRAFFIC
+) AS t1
+INNER JOIN (
+SELECT *
+FROM BF
+) AS t2
+ON REGEXP_CONTAINS(t1.keyword,t2.CampaignIDCM) 
+   AND t1.date BETWEEN t2.DateStart AND t2.DateFinish
+) AS t1
+GROUP BY date, sessionId, source, medium, campaign, BFName,	CampaignIDCM,	DateStart, DateFinish
+/*Publicis BF*/
+UNION ALL
+SELECT `raiffeisen-owox.Common_query.toDate`(date), clientId, trafficSource.source,  trafficSource.medium,trafficSource.campaign,
+"RFB-DIG-20-0002_Raiffeisen OLVCampaign DC Mar'20_ Raiffeisenbank-RU-Starcom-(RUB)-(DCM)_19mar20_02aug20" BFName, '' CampaignIDCM, DATE( '2020-01-01') DateStart,CURRENT_DATE() DateFinish
+      FROM `raiffeisen-owox.64807083.ga_sessions_*`
+      WHERE trafficSource.campaign LIKE '%publicis%'
+      AND date BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'0101') AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
+-------------------------------------------------------------------------------------------------------------------------------------------  
+),
+CostPerSessions AS ( --<<<<<<<<<<<<<<
+-------------------------------------------------------------------------------------------------------------------------------------------
+--ВЫЧИСЛЯЕМ СТОИМОСТЬ КАЖДОЙ СЕССИИ
+SELECT date, Sessions, adCost, adCost/Sessions as CostSessions, source,	medium,	campaign,
+       CONCAT(CAST(date AS STRING),source,medium,campaign) AS CostConcat
+FROM (
+SELECT date, sum(Sessions) as Sessions, sum(adCost) as adCost, source, medium, campaign
+FROM (
+SELECT date, 1 as Sessions, adCost, source,	medium,	campaign
+FROM (
+SELECT date, sessionId, 0 as adCost, source,	medium,	campaign      
+FROM TRAFFIC
+UNION ALL
+SELECT date, "UNKNOWN" AS sessionId, adCost, source, medium, campaign
+FROM COST
+) AS t1
+--where extract(year from date)=2019 and extract(month from date)=3 and source="yandex" --!!!!!!!!!!!!!!!!!!!!!
+) AS t2 
+GROUP BY date, source, medium,	campaign
+) AS t3
+-------------------------------------------------------------------------------------------------------------------------------------------
+)
+
+
+
+
+------------------------------------------------------------------------------------------------------------------------------------------- 
+--РАБОЧАЯ ОБЛАСТЬ
+
+------------------------------------------------------------------------------------------------------------------------------------------- 
+-- НОВЫЙ ФОРМАТ ДАШБОРДА
+SELECT date, Month, Year, Sessions, Leads, QLeads, Issues, 
+       IF(Year<=2018,ROUND(Cost*0.18+Cost,0),ROUND(Cost*0.20+Cost,0)) AS Cost,
+       TagNTB, Product, medium AS Medium, VB, BrandFormance, BFName, "FORM_LEAD" AS API
+FROM ( 
+SELECT date, Month, Year,
+       SUM(Sessions) AS Sessions,
+       SUM(Leads) AS Leads, 
+       SUM(QLeads) AS QLeads, 
+       SUM(Issues) AS Issues,
+       SUM(Cost) AS Cost,  
+       TagNTB, Product, medium, VB, BrandFormance, BFName
+FROM (
+SELECT date, Month, Year,
+       Sessions,
+       0 AS Leads, 
+       0 AS QLeads, 
+       0 AS Issues,
+       adCost AS Cost, source,   
+       TagNTB, Product, medium, VB, BrandFormance, BFName
+FROM (       
+------------------------------------------------------------------------------------------------------------------------------------------- 
+--ПОДГОНКА ПОД ФОРМАТ ДАШБОРДА
+--SELECT Month, Year, Sessions, Leads, QLeads, Issues, 
+--       IF(Year<=2018,ROUND(Cost*0.18+Cost,0),ROUND(Cost*0.20+Cost,0)) AS Cost,
+--       medium AS Medium, Product, TagNTB, VB, BrandFormance, BFName
+--FROM ( 
+--SELECT Month, Year,
+--       Sessions,
+--       0 AS Leads, 
+--       0 AS QLeads, 
+--       0 AS Issues,
+--       adCost AS Cost, source,   
+--       medium, Product, TagNTB, VB, BrandFormance, BFName      
+--FROM (       
+------------------------------------------------------------------------------------------------------------------------------------------- 
+--ДОБАВЛЕНИЕ ИДЕНТИФИКАТОРА BRANDFORMANCE
+SELECT *
+FROM (
+SELECT date, EXTRACT(MONTH FROM date) AS Month, EXTRACT(YEAR FROM date) AS Year, Sessions, adCost, source, medium, Product, TagNTB, VB, BrandFormance, BFName
+FROM (
+SELECT date,
+--       SUM(Sessions) OVER (PARTITION BY date, source, medium, Product, TagNTB, VB, BrandFormance, BFName) AS Sessions,
+--       SUM(Cost) OVER (PARTITION BY date, source, medium, Product, TagNTB, VB, BrandFormance, BFName) AS adCost,
+       Sessions AS Sessions,
+       Cost AS adCost,
+       source, medium, Product, TagNTB, VB, BrandFormance, BFName
+---       ROW_NUMBER() OVER (PARTITION BY date, source, medium, Product, TagNTB, VB, BrandFormance, BFName) AS ROW
+FROM (       
+SELECT date, Sessions, Cost, source, medium, 
+          CASE   
+              WHEN ( REGEXP_CONTAINS(campaign,"pr:deposit") AND REGEXP_CONTAINS(campaign,"savings") ) OR REGEXP_CONTAINS(campaign,R"deposit_saving|_saving|saving|deposit_savings|_savings|savings") THEN "SA" 
+              WHEN ( REGEXP_CONTAINS(campaign,"pr:deposit") AND REGEXP_CONTAINS(campaign,"deposit") ) OR REGEXP_CONTAINS(campaign,R"deposit") THEN "TD"               
+              WHEN REGEXP_CONTAINS(campaign,"pr:cc") OR REGEXP_CONTAINS(campaign,R"_cc_|cc_|_cc110_|cc110_") THEN "CC"    
+              WHEN REGEXP_CONTAINS(campaign,"pr:dc") OR REGEXP_CONTAINS(campaign,R"_dc_|dc_|debit_card|_gold_|gold_") THEN "DC"         
+              WHEN REGEXP_CONTAINS(campaign,"pr:sme") OR REGEXP_CONTAINS(campaign,R"_RKO_|RKO_|rko_brandfrms") THEN "SME"    
+              WHEN REGEXP_CONTAINS(campaign,"pr:ml") OR REGEXP_CONTAINS(campaign,R"_ml_|ml_|refmrtgloans_|mortgage") THEN "ML / ML REF"   
+              WHEN REGEXP_CONTAINS(campaign,"pr:pl") OR REGEXP_CONTAINS(campaign,R"_pl_|pl_|_potreb_|potreb_|potreb_credit|refinans_|personal-loans|auto_credit") THEN "PL / PL REF / PL Auto" 
+              WHEN REGEXP_CONTAINS(campaign,"pr:pb") THEN "Premium Product"                
+              ELSE "Other" 
+          END AS Product, 
+          TagNTB,
+          CASE 
+              WHEN REGEXP_CONTAINS(campaign,R".*\|vb\|.*|.*\|vb|_vb|.*vb\||vb%|7Cvb|7cvb") THEN "TRUE"
+              ELSE "FALSE"
+          END AS VB,
+          CASE 
+              WHEN BFName IS NOT NULL AND date BETWEEN DateStart AND DateFinish THEN "TRUE"
+              ELSE "FALSE"
+          END AS BrandFormance,
+          CASE 
+              WHEN BFName IS NOT NULL AND date BETWEEN DateStart AND DateFinish THEN BFName
+              ELSE "NULL"
+          END AS BFName
+FROM (
+SELECT *
+FROM (
+SELECT t1.*,
+       t2.BFName, t2.DateStart, t2.DateFinish
+FROM (       
+------------------------------------------------------------------------------------------------------------------------------------------- 
+--РАСПРЕДЕЛЯЕМ РАСХОДЫ ПО КАЖДОЙ СТРОКЕ
+SELECT date, Sessions, Sessions*adCostBySession AS Cost, source, medium, campaign, TagNTB, adCost, TotalSessions, adCostBySession
+FROM (
+SELECT *, adCost/TotalSessions AS adCostBySession
+FROM (
+SELECT *,
+       SUM(Sessions) OVER (PARTITION BY date, source,	medium,	campaign) AS TotalSessions
+FROM (
+------------------------------------------------------------------------------------------------------------------------------------------- 
+--ДОБАВИЛИ РАСХОДЫ КОТОРЫЕ НЕ СМОГЛИ СМАТЧИТЬСЯ 
+SELECT date, Sessions, source, medium, campaign, TagNTB, adCost
+FROM (
+SELECT t1.date,	1 AS Sessions, t1.source, t1.medium,	t1.campaign, "yes" AS TagNTB, t1.adCost,
+       t2.sessionId
+FROM (       
+SELECT *
+FROM CostPerSessions
+) AS t1
+LEFT JOIN (
+SELECT *, CONCAT(CAST(date AS STRING),source,medium,campaign) AS TrafConcat
+FROM TRAFFIC
+--where extract(year from date)=2019 and extract(month from date)=3 and source="yandex" --!!!!!!!!!!!!!!!!!!!!!
+) AS t2
+ON t2.TrafConcat=t1.CostConcat
+) AS t1
+WHERE sessionId IS NULL
+------------------------------------------------------------------------------------------------------------------------------------------- 
+UNION ALL
+------------------------------------------------------------------------------------------------------------------------------------------- 
+--ДОБАВЛЕНИЕ ИДЕНТИФИКАТОРА NTB
+SELECT *
+FROM (
+SELECT date,
+       COUNT(sessionId) OVER (PARTITION BY date, source, medium, campaign, TagNTB) AS Sessions,
+       source, medium, campaign,	TagNTB, adCost
+FROM (       
+SELECT t1.*, IF(NTB = 'NTB','yes',null) AS TagNTB 
+FROM (    
+------------------------------------------------------------------------------------------------------------------------------------------- 
+--ОБЪЕДИНИЛИ ТРАФИК И РАСХОДЫ КОТОРЫЕ СМОГЛИ СМАТЧИТЬСЯ 
+SELECT t1.date,	t1.sessionId,	t1.source, t1.medium,	t1.campaign, t1.keyword,
+       --t2.date AS Cdate, t2.Sessions, 
+       t2.adCost--, t2.CostSessions, t2.source AS Csource,	t2.medium AS Cmedium, t2.campaign AS Ccampaign
+FROM (       
+SELECT *, CONCAT(CAST(date AS STRING),source,medium,campaign) AS TrafConcat
+FROM TRAFFIC
+--where extract(year from date)=2019 and extract(month from date)=3 and source="yandex" --!!!!!!!!!!!!!!!!!!!!!
+) AS t1
+LEFT JOIN (
+SELECT *
+FROM CostPerSessions
+) AS t2
+ON t1.TrafConcat=t2.CostConcat
+------------------------------------------------------------------------------------------------------------------------------------------- 
+) AS t1
+LEFT JOIN (  
+SELECT *  
+FROM NTB    
+) AS t2  
+ON t1.sessionId=t2.sessionID
+) AS t1
+) AS t2
+GROUP BY date, Sessions, source, medium, campaign, TagNTB, adCost
+------------------------------------------------------------------------------------------------------------------------------------------- 
+) AS t1
+) AS t2
+) AS t3
+------------------------------------------------------------------------------------------------------------------------------------------- 
+) AS t1
+LEFT JOIN (
+SELECT *
+FROM BFSessions
+) AS t2
+ON t1.campaign=t2.campaign AND t1.date BETWEEN t2.DateStart AND t2.DateFinish
+) AS t1
+GROUP BY date, Sessions, Cost, source, medium, campaign, TagNTB, adCost, TotalSessions, adCostBySession, BFName, DateStart, DateFinish
+
+) AS t1
+) AS t2
+) AS t3
+) AS t4
+GROUP BY date, Month, Year, Sessions, adCost, source, medium, Product, TagNTB, VB, BrandFormance, BFName
+------------------------------------------------------------------------------------------------------------------------------------------- 
+--) AS t1
+--) AS t2
+------------------------------------------------------------------------------------------------------------------------------------------- 
+) AS t1
+) AS t2
+GROUP BY date, Month, Year, medium, Product, TagNTB, VB, BrandFormance, BFName
+) AS t3
