@@ -1,0 +1,6 @@
+SELECT
+  *
+FROM
+  `raiffeisen-owox.RB_DS_MediumLevel_ASIS.Step5_Final_Assambly_DS`
+WHERE
+  REGEXP_CONTAINS(Campaign,R".*qm.*")

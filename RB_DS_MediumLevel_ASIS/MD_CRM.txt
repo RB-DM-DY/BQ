@@ -1,0 +1,34 @@
+WITH CRM as (SELECT ORDER_ID, LEAD_DATE, PRODUCT_LINE, NTB, UTM_MEDIUM, UTM_SOURCE, UTM_CAMPAIGN, UTM_CONTENT, UTM_TERM, STATUSES FROM `raiffeisen-owox.CRM.orders` WHERE DATE(_PARTITIONTIME) >= "2020-01-01" )
+
+SELECT UTM_CAMPAIGN, agency,
+MAX(IF(key = 'pr', value, NULL)) as pr,
+MAX(IF(key = 'sp', value, NULL)) as sp,
+MAX(IF(key = 'ssp', value, NULL)) as ssp,
+MAX(IF(key = 'plt', value, NULL)) as plt,
+MAX(IF(key = 'tg', value, NULL)) as tg,
+MAX(IF(key = 'aud', value, NULL)) as aud,
+MAX(IF(key = 'sem', value, NULL)) as sem,
+MAX(IF(key = 'bids', value, NULL)) as bids,
+MAX(IF(key = 'model', value, NULL)) as model,
+MAX(IF(key = 'offer', value, NULL)) as offer,
+MAX(IF(key = 'cntr', value, NULL)) as cntr,
+MAX(IF(key = 'fdistr', value, NULL)) as fdistr,
+MAX(IF(key = 'city', value, NULL)) as city,
+MAX(IF(key = 'vb',  'vb', NULL)) as vb,	
+MAX(IF(key = 'classic', 'classic', NULL)) as classic,	
+MAX(IF(key = 'bf', 'bf', NULL)) as bf,	
+MAX(IF(key = 'stories', 'stories', NULL)) as stories,	
+MAX(IF(key = 'video', 'video', NULL)) as video,	
+MAX(IF(key = 'qm', 'qm', NULL)) as qm,	
+MAX(IF(key = 'brnd', 'brnd', NULL)) as brnd,	
+MAX(IF(key = 'promo', 'promo', NULL)) as promo,	
+MAX(IF(key = 'exp', value, NULL)) as exp,	
+MAX(IF(key = 'splt', 'splt', NULL)) as splt,	
+MAX(IF(key = 'quiz', 'quiz', NULL)) as quiz	
+FROM (
+  SELECT UTM_CAMPAIGN, agency, SPLIT(T, ":")[SAFE_OFFSET(0)] as key, SPLIT(T, ":")[SAFE_OFFSET(1)] as value
+  FROM(
+  SELECT UTM_CAMPAIGN, SPLIT(UTM_CAMPAIGN, "|")[SAFE_OFFSET(0)] as agency, SPLIT(UTM_CAMPAIGN, "|") C FROM CRM
+  ) as F , F.C as T WHERE ARRAY_LENGTH(C) > 1
+)
+GROUP By UTM_CAMPAIGN, agency

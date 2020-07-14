@@ -1,0 +1,134 @@
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- РАСЧЕТ ЛИДОВ
+SELECT UNIQUE(Date) AS Date, CAST(Sessions AS INTEGER) AS Sessions, CAST(Leads AS INTEGER) AS Leads, CAST(QLeads AS INTEGER) QLeads, CAST(Issues AS INTEGER) AS Issues, 
+       CAST(Cost AS FLOAT) AS Cost, ProductLead, ProductTraffic, SubProductLead, SubProductTraffic, TypeTraffic, Source,	Medium, NTB AS TagNTB
+FROM (
+SELECT Date,
+       IF(LeadID="not set",0,0) AS Sessions, 
+       COUNT(LeadID) OVER (PARTITION BY Date, ProductLead, ProductTraffic, SubProductLead, SubProductTraffic, TypeTraffic, Source,	Medium, NTB) AS Leads,
+       IF(LeadID="not set",0,0) AS QLeads,
+       IF(LeadID="not set",0,0) AS Issues,
+       IF(LeadID="not set",0,0) AS Cost,        
+       ProductLead, ProductTraffic, SubProductLead, SubProductTraffic, TypeTraffic, Source,	Medium, NTB
+FROM (
+
+SELECT Date, LeadID, ProductLead, ProductTraffic, 
+       IF(ProductLead=ProductTraffic,SubProductTraffic,"Other") AS SubProductLead,
+       SubProductTraffic, TypeTraffic, Source, Medium, Campaign, Content, Keyword, NTB,
+FROM (
+SELECT Date, LeadID, Product AS ProductLead,
+          CASE 
+              WHEN REGEXP_MATCH(Campaign,"pr:deposit") OR REGEXP_MATCH(Campaign,R"_deposit_|deposit_|saving|_deposit") THEN "SA"
+              WHEN REGEXP_MATCH(Campaign,"pr:cc") OR REGEXP_MATCH(Campaign,R"_cc_|cc_|_cc110_|cc110_|cc_110") THEN "CC" 
+              WHEN REGEXP_MATCH(Campaign,"pr:dc") OR REGEXP_MATCH(Campaign,R"_dc_|dc_|debit_card|_gold_|gold_") THEN "DC"   
+              WHEN REGEXP_MATCH(Campaign,"pr:sme") OR REGEXP_MATCH(Campaign,R"_RKO_|RKO_|rko_brandfrms") THEN "SME"  
+              WHEN REGEXP_MATCH(Campaign,"pr:ml") OR REGEXP_MATCH(Campaign,R"_ml_|ml_|refmrtgloans_|mortgage") THEN "ML / ML REF"  
+              WHEN REGEXP_MATCH(Campaign,"pr:pl") OR REGEXP_MATCH(Campaign,R"_pl_|pl_|_potreb_|potreb_|potreb_credit|refinans_|personal-loans|auto_credit") THEN "PL / PL REF / PL Auto"                    
+              ELSE "Other" 
+       END AS ProductTraffic,
+       CASE 
+           WHEN REGEXP_MATCH(Campaign,r"pr:cc") AND REGEXP_MATCH(Campaign,r"sp:110") THEN 'CC 110 days'
+           WHEN REGEXP_MATCH(Campaign,r"pr:cc") AND REGEXP_MATCH(Campaign,r"sp:vsesrazu|sp:vsesraz") THEN 'CC Vse Srazu'           
+           WHEN REGEXP_MATCH(Campaign,r"pr:cc") THEN 'CC' 
+           WHEN REGEXP_MATCH(campaign,R"_cc110_|cc110_|cc_110") THEN 'CC 110 days'  
+           WHEN REGEXP_MATCH(Campaign,r"_cc_|cc_") AND REGEXP_MATCH(Campaign,r"_vsesrazu_") THEN 'CC Vse Srazu' 
+           WHEN REGEXP_MATCH(Campaign,r"_cc_|cc_") THEN 'CC'                
+                    
+           WHEN REGEXP_MATCH(Campaign,r"pr:dc") AND REGEXP_MATCH(Campaign,r"sp:vsesrazu|sp:vsesraz") THEN 'DC Vse Srazu'
+           WHEN REGEXP_MATCH(Campaign,r"pr:dc") AND REGEXP_MATCH(Campaign,r"sp:gold") THEN 'DC Gold'
+           WHEN REGEXP_MATCH(Campaign,r"pr:dc") THEN 'DC'
+           WHEN REGEXP_MATCH(Campaign,"_dc_|dc_|debit_card") OR REGEXP_MATCH(Campaign,R"_buyfly_") THEN "DC Buy&Fly"              
+           WHEN REGEXP_MATCH(Campaign,"_dc_|dc_|debit_card") OR REGEXP_MATCH(Campaign,R"_gold_|gold_") THEN "DC Gold"  
+           WHEN REGEXP_MATCH(Campaign,"_dc_|dc_|debit_card") OR REGEXP_MATCH(Campaign,R"_vsesraz|_vsesrazu_|_vsesrzu_") THEN "DC Vse Srazu"            
+           WHEN REGEXP_MATCH(Campaign,r"_dc_|dc_|debit_card") THEN 'DC'          
+           
+           WHEN REGEXP_MATCH(Campaign,r"pr:deposit") AND REGEXP_MATCH(Campaign,r"sp:savings") THEN 'SA Savings'  
+           WHEN REGEXP_MATCH(Campaign,r"pr:deposit") AND REGEXP_MATCH(Campaign,r"sp:deposit") THEN 'SA Deposit'   
+           WHEN REGEXP_MATCH(Campaign,r"pr:deposit") THEN 'SA'  
+           WHEN REGEXP_MATCH(Campaign,r"_deposit_|deposit_|_deposit") AND REGEXP_MATCH(Campaign,r"_sav|_savi|_saving|_savings-|_savings_") THEN 'SA Savings'
+           WHEN REGEXP_MATCH(Campaign,r"_sav|_savi|_saving|_savings-|_savings_") THEN "SA Savings"
+           WHEN REGEXP_MATCH(Campaign,r"_deposit_|deposit_|_deposit") AND REGEXP_MATCH(Campaign,r"_deposit-|_deposit_|deposit_") THEN 'SA Deposit'             
+           WHEN REGEXP_MATCH(Campaign,r"_deposit_|deposit_|_deposit") THEN 'SA'                      
+           
+           WHEN REGEXP_MATCH(Campaign,r"pr:ml") AND REGEXP_MATCH(Campaign,r"sp:refinans|sp:refinan|sp:ref") THEN 'ML Refinans'
+           WHEN REGEXP_MATCH(Campaign,r"pr:ml") AND REGEXP_MATCH(Campaign,r"sp:secondary") THEN 'ML Secondary'           
+           WHEN REGEXP_MATCH(Campaign,r"pr:ml") THEN 'ML'      
+           WHEN REGEXP_MATCH(Campaign,r"_ml_|ml_|mortgage") AND REGEXP_MATCH(Campaign,r"refmrtgloans_|_refinans_") THEN 'ML Refinans'   
+           WHEN REGEXP_MATCH(Campaign,r"refmrtgloans_") THEN "ML Refinans"
+           WHEN REGEXP_MATCH(Campaign,r"_ml_|ml_|mortgage") AND REGEXP_MATCH(Campaign,r"_secon|_secondary_") THEN 'ML Secondary'                  
+           WHEN REGEXP_MATCH(Campaign,r"_ml_|ml_|mortgage") THEN 'ML'  	
+                    
+           WHEN REGEXP_MATCH(Campaign,r"pr:pl") AND REGEXP_MATCH(Campaign,r"sp:auto") THEN 'PL Auto Credit'                
+           WHEN REGEXP_MATCH(Campaign,r"pr:pl") AND REGEXP_MATCH(Campaign,r"sp:plnoinsurance") THEN 'PL No Insurance'             
+           WHEN REGEXP_MATCH(Campaign,r"pr:pl") AND REGEXP_MATCH(Campaign,r"sp:plref|sp:refinan|ref") THEN 'PL Refinans'
+           WHEN REGEXP_MATCH(Campaign,r"pr:pl") AND REGEXP_MATCH(Campaign,r"sp:pl") THEN 'PL'              
+           WHEN REGEXP_MATCH(Campaign,r"pr:pl") THEN 'PL'  
+           WHEN REGEXP_MATCH(Campaign,r"_pl_|pl_|_potreb_|potreb_|potreb_credit|personal-loans") AND REGEXP_MATCH(Campaign,r"auto_credit|_auto_") THEN 'PL Auto Credit'  
+           WHEN REGEXP_MATCH(Campaign,r"_pl_|pl_|_potreb_|potreb_|potreb_credit|personal-loans") AND REGEXP_MATCH(Campaign,r"_refinans_|refinans_") THEN 'PL Refinans' 
+           WHEN REGEXP_MATCH(Campaign,r"_refinans_|refinans_|refinans") THEN "PL Refinans" 
+           WHEN REGEXP_MATCH(Campaign,r"_pl_|pl_|_potreb_|potreb_|potreb_credit|personal-loans") THEN 'PL'  
+  
+           WHEN REGEXP_MATCH(Campaign,r"pr:sme") AND REGEXP_MATCH(Campaign,r"sp:metro") THEN 'SME Metro'   
+           WHEN REGEXP_MATCH(Campaign,r"pr:sme") AND REGEXP_MATCH(Campaign,r"sp:online_kassa") THEN 'SME Online Kassa'
+           WHEN REGEXP_MATCH(Campaign,r"pr:sme") AND REGEXP_MATCH(Campaign,r"sp:trade_acq") THEN 'SME Trade Acq'              
+           WHEN REGEXP_MATCH(Campaign,r"pr:sme") AND REGEXP_MATCH(Campaign,r"sp:mastercard") THEN 'SME MasterCard'
+           WHEN REGEXP_MATCH(Campaign,r"pr:sme") AND REGEXP_MATCH(Campaign,r"sp:sme") THEN 'SME'           
+           WHEN REGEXP_MATCH(Campaign,r"pr:sme") THEN 'SME' 
+           WHEN REGEXP_MATCH(Campaign,r"_RKO_|RKO_|rko_brandfrms") AND REGEXP_MATCH(Campaign,r"_acq|_acq_") THEN 'SME Trade Acq'       
+           WHEN REGEXP_MATCH(Campaign,r"_RKO_|RKO_|rko_brandfrms") AND REGEXP_MATCH(Campaign,r"_metro-") THEN 'SME Metro'             
+           WHEN REGEXP_MATCH(Campaign,r"_RKO_|RKO_|rko_brandfrms") THEN 'SME' 	
+           ELSE 'Other'
+       END AS SubProductTraffic, 
+       CASE 
+           WHEN REGEXP_MATCH(Campaign,r"plt:search|search") THEN 'Search'
+           WHEN REGEXP_MATCH(Campaign,r"plt:social|social") THEN 'Social'
+           WHEN REGEXP_MATCH(Campaign,r"plt:display|display") THEN 'Display'
+           WHEN REGEXP_MATCH(Campaign,r"plt:mkb|mkb") THEN 'MKB'
+           ELSE 'Other'
+       END AS TypeTraffic,           
+       Source, Medium, Campaign, Content, Keyword, NTB,
+FROM (
+SELECT Date, LeadID, Product, Source, Medium, 
+       if(REGEXP_MATCH(Campaign,r"%2C|%2c"),REGEXP_REPLACE(Campaign,r"%2C|%2c",","),Campaign) AS Campaign, 
+       Content, Keyword, NTB
+FROM ( 
+SELECT Date, LeadID, Product, Source, Medium, 
+       if(REGEXP_MATCH(Campaign,r"%3A|%3a|%253A|%253a"),REGEXP_REPLACE(Campaign,r"%3A|%3a|%253A|%253a",":"),Campaign) AS Campaign,  
+       Content, Keyword, NTB
+FROM ( 
+SELECT Date, LeadID, Product, Source, Medium, 
+       if(REGEXP_MATCH(Campaign,r"%7C|%7c|%257C|%257c"),REGEXP_REPLACE(Campaign,r"%7C|%7c|%257C|%257c","|"),Campaign) AS Campaign, 
+       Content, Keyword, NTB
+FROM (
+SELECT Date, UNIQUE(LeadID) AS LeadID, Product, Source, Medium, Campaign, Content, Keyword, NTB--ПОВТОРНО УНИКАЛИЗИРУЕМ ЛИДЫ
+FROM (
+SELECT DATE(LeadDate) AS Date, UNIQUE(leadid) AS LeadID, 
+       CASE 
+           WHEN REGEXP_MATCH(PRODUCT_LINE,r'Credit') THEN 'CC'
+           WHEN REGEXP_MATCH(PRODUCT_LINE,r'Debit|IPayroll|Premium Direct|MasterCard|Gold') THEN 'DC'
+           WHEN REGEXP_MATCH(PRODUCT_LINE,r'Mortgage') THEN 'ML / ML REF'
+           WHEN REGEXP_MATCH(PRODUCT_LINE,r'Personal Loans') THEN 'PL / PL REF / PL Auto'
+           WHEN REGEXP_MATCH(PRODUCT_LINE,r'Saving Accounts|Standard Term Deposits') THEN 'SA'
+           WHEN REGEXP_MATCH(PRODUCT_LINE,r'RKO') THEN 'SME'
+       ELSE 'Other' END AS Product, 
+       UTM_SOURCE AS Source, UTM_MEDIUM AS Medium, UTM_CAMPAIGN AS Campaign, UTM_CONTENT AS Content, UTM_TERM AS Keyword,
+       NTB, STATUS AS StatusLead, APPROVAL AS ApprovalLead 
+
+FROM [raiffeisen-owox:Orders_CRM.CRM_orders]
+WHERE REGEXP_MATCH(UTM_SOURCE,R'yandex$|google$|mytarget|facebook|dbm|astraone') AND UTM_MEDIUM ='cpc' 
+      AND CAST(DATE(LeadDate) AS STRING) BETWEEN CONCAT(CAST(YEAR(CURRENT_DATE())-1 AS STRING),'-01-01') AND CAST(DATE_ADD(CURRENT_TIMESTAMP(),-1,'DAY') AS STRING)
+//      AND REGEXP_MATCH(UTM_CAMPAIGN,R'ohm\|') 
+GROUP BY Date, Product, Source, Medium, Campaign, Content, Keyword, NTB, StatusLead, ApprovalLead
+) AS t0
+GROUP BY Date, Product, Source, Medium, Campaign, Content, Keyword, NTB
+) AS t1
+) AS t2
+) AS t3 
+) AS t4
+
+) AS t5
+
+) AS CalcLeads 
+) AS Leads
+GROUP BY Sessions, Leads, QLeads, Issues, Cost, ProductLead, ProductTraffic, SubProductLead, SubProductTraffic, TypeTraffic, Source,	Medium, TagNTB
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------

@@ -1,0 +1,21 @@
+SELECT Date,	
+       SUM(Sessions) AS Sessions,
+       SUM(Leads) AS Leads,
+       SUM(QLeads) AS QLeads,
+       SUM(Issues) AS Issues,
+       SUM(Cost) AS Cost,
+       NTB,	Product, Source, Medium, Campaign, VB, BrandFormance
+FROM (
+SELECT *
+FROM `raiffeisen-owox.RB_DS_MediumLevel_ASIS.CPC_Step1_Sessions_new` 
+UNION ALL
+SELECT *
+FROM `raiffeisen-owox.RB_DS_MediumLevel_ASIS.CPC_Step2_Leads_new`  
+UNION ALL
+SELECT *
+FROM `raiffeisen-owox.RB_DS_MediumLevel_ASIS.CPC_Step3_QLeads_new`  
+UNION ALL
+SELECT *
+FROM `raiffeisen-owox.RB_DS_MediumLevel_ASIS.CPC_Step4_Issues_new`  
+) AS t1
+GROUP BY Date, NTB,	Product, Source, Medium, Campaign, VB, BrandFormance

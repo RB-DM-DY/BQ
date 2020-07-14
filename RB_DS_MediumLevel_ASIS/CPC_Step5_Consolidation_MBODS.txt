@@ -1,0 +1,135 @@
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- ДОБАВИЛИ ДАТУ ПОСЛЕДНЕГО ОБНОВЛЕНИЯ CRM_Orders
+SELECT t1.Date AS Date, t1.Month AS Month, t1.Year AS Year, T1.TagNTB AS TagNTB, t1.Product AS Product, t1.Source AS Source, t1.Medium AS Medium,
+       t1.BrandFormance AS BrandFormance,	t1.VB AS VB, t1.FactSessions AS FactSessions, t1.FactLeads AS FactLeads, t1.FactQLeads AS FactQLeads,
+       t1.FactIssues AS FactIssues, t1.FactCost AS FactCost, t1.PlanSessions AS PlanSessions, t1.PlanLeads AS PlanLeads, t1.PlanQleads AS PlanQleads, 
+       t1.PlanIssues AS PlanIssues,	t1.PlanCost AS PlanCost, t1.PlanFilter AS PlanFilter,
+       t2.LastDate AS UpDate, t1.Level AS Level
+FROM (
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- СБОРКА ДЛЯ ДАШБОРДА ПЛАН/ФАКТА
+SELECT DATE(EXTRACT(YEAR FROM Date),EXTRACT(MONTH FROM Date),1) AS Date,
+       EXTRACT(MONTH FROM Date) AS Month,
+       EXTRACT(YEAR FROM Date) AS Year,
+       IF(NTB="yes","NTB","EXIST") AS TagNTB,
+       IF(REGEXP_CONTAINS(Product,R"Premium Product|Insurance"),"Other",
+       CASE 
+           WHEN Product="PL / PL REF / PL Auto" THEN "PL"
+           WHEN Product="CC" THEN "CC"
+           WHEN Product="DC" THEN "DC" 
+           WHEN Product="ML / ML REF" THEN "ML"
+           WHEN Product="SA" THEN "SA"
+           WHEN Product="TD" THEN "TD"
+           WHEN Product="SME" THEN "SME"      
+           ELSE "Other"
+       END) AS Product, 
+       CASE 
+           WHEN REGEXP_CONTAINS(Source,R"yandex") THEN "yandex"
+           WHEN REGEXP_CONTAINS(Source,R"google") THEN "google"
+           WHEN REGEXP_CONTAINS(Source,R"facebook") THEN "facebook"
+           WHEN REGEXP_CONTAINS(Source,R"mytarg") THEN "mytarget"   
+           ELSE "Other"
+       END AS Source,        
+       Medium,
+       BrandFormance, VB,
+       SUM(Sessions) AS FactSessions, SUM(Leads) AS FactLeads, SUM(QLeads) AS FactQLeads,	SUM(Issues) AS FactIssues,	SUM(Cost) AS FactCost,
+       NULL AS PlanSessions, NULL AS PlanLeads, NULL AS PlanQleads, NULL AS PlanIssues, NULL AS PlanCost,
+       CASE
+           WHEN Product="SME" AND REGEXP_CONTAINS(Medium,R"cpc|affiliate") THEN "EXCLUDE"
+           WHEN REGEXP_CONTAINS(Product,R"SA|TD") AND Medium="affiliate" THEN "EXCLUDE"    
+--           WHEN REGEXP_CONTAINS(Product,R"PL") AND Medium="cpc" AND REGEXP_CONTAINS(VB,R"FALSE") THEN "EXCLUDE"     
+           ELSE "INCLUDE"
+       END AS PlanFilter, "MIDDLE" AS Level       
+FROM (
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- БАЗОВАЯ КОНСОЛИДАЦИЯ СРЕДНЕУРОВНЕВЫХ ДАННЫХ
+SELECT Date,	
+       SUM(Sessions) AS Sessions,
+       SUM(Leads) AS Leads,
+       SUM(QLeads) AS QLeads,
+       SUM(Issues) AS Issues,
+       SUM(Cost) AS Cost,
+       NTB,	Product, Source, Medium, Campaign, VB, BrandFormance
+FROM (
+SELECT *
+FROM `raiffeisen-owox.RB_DS_MediumLevel_ASIS.CPC_Step1_Sessions_new` 
+UNION ALL
+SELECT *
+FROM `raiffeisen-owox.RB_DS_MediumLevel_ASIS.CPC_Step2_Leads_new`  
+UNION ALL
+SELECT *
+FROM `raiffeisen-owox.RB_DS_MediumLevel_ASIS.CPC_Step3_QLeads_new`  
+UNION ALL
+SELECT *
+FROM `raiffeisen-owox.RB_DS_MediumLevel_ASIS.CPC_Step4_Issues_new`  
+) AS t1
+GROUP BY Date, NTB,	Product, Source, Medium, Campaign, VB, BrandFormance
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+) AS t1
+GROUP BY Date, Month, Year,	TagNTB, Product, Source,	Medium, BrandFormance, VB, PlanFilter
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+) AS t1
+
+LEFT JOIN (
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- ТАБЛИЦА ПОСЛЕДНЕЙ ДАТЫ ОБНОВЛЕНИЯ CRM_Orders 
+SELECT *
+FROM (
+SELECT Product,
+       MAX(LastDate) OVER (PARTITION BY Product ORDER BY Date ASC ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS LastDate
+FROM (
+SELECT Date,        
+       IF(REGEXP_CONTAINS(Product,R"Premium Product|Insurance"),"Other",
+       CASE 
+           WHEN Product="PL / PL REF / PL Auto" THEN "PL"
+           WHEN Product="CC" THEN "CC"
+           WHEN Product="DC" THEN "DC" 
+           WHEN Product="ML / ML REF" THEN "ML"
+           WHEN Product="SA" THEN "SA"
+           WHEN Product="TD" THEN "TD"
+           WHEN Product="SME" THEN "SME"      
+           ELSE "Other"
+       END) AS Product, LastDate
+FROM (
+SELECT *,
+       IF(CAST(Date AS STRING)=CAST(LastDate AS STRING),TRUE,FALSE) AS TRE
+FROM (       
+SELECT *,
+       LAST_VALUE(Date) OVER (PARTITION BY Product ORDER BY Date ASC ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS LastDate
+FROM (       
+SELECT Date, Product
+FROM (
+SELECT *,
+       ROW_NUMBER() OVER (PARTITION BY Date, Product) AS ROW
+FROM (
+SELECT DATE(LeadDate) AS Date,-- leadid AS LeadID,
+       CASE 
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Credit') THEN 'CC'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Debit|IPayroll|MasterCard|Gold') THEN 'DC'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Premium Direct') THEN 'Premium Product'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Mortgage') THEN 'ML / ML REF'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Personal Loans') THEN 'PL / PL REF / PL Auto'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Saving Accounts') THEN 'SA'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Standard Term Deposits') THEN 'TD'           
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'RKO') THEN 'SME'
+       ELSE 'Other' END AS Product
+FROM `raiffeisen-owox.Orders_CRM.CRM_orders`
+WHERE CAST(DATE(LeadDate) AS STRING) BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'-01-01') AND CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING)
+) AS t1
+) AS t2
+WHERE ROW=1 AND REGEXP_CONTAINS(CAST(EXTRACT(YEAR FROM Date) AS STRING),CAST(EXTRACT(YEAR FROM CURRENT_DATE()) AS STRING))
+ORDER BY Product, Date
+) AS t3
+) AS t4
+) AS t5
+WHERE TRE IS TRUE
+) AS t6
+) AS t7
+GROUP BY Product, LastDate
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+) AS t2
+
+ON t1.Product=t2.Product
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------

@@ -1,0 +1,91 @@
+SELECT DATE(CAST(Year AS INT64),CAST(Month AS INT64),1) AS Date, Month,	Year,	Sessions,	Leads, QLeads, Issues, Cost,
+       CASE 
+           WHEN Source IS NULL AND Medium IS NULL THEN "(direct)"
+           WHEN Source="yandex.ru" AND Medium="referral" THEN "yandex"
+           ELSE Source
+        END AS Source,
+       CASE 
+           WHEN Source IS NULL AND Medium IS NULL THEN "(none)"
+           WHEN Source="yandex.ru" OR Source="yandex" AND Medium="referral" THEN "organic"
+           ELSE Medium
+        END AS Medium,
+        Product, NTB  
+FROM (
+SELECT Month, Year,
+       IF(LeadID='notset',0,0) AS Sessions,
+       COUNT(Date) OVER (PARTITION BY Year, Month, Source, Medium, NTB, Product) AS Leads,
+       IF(LeadID='notset',0,0) AS QLeads,
+       IF(LeadID='notset',0,0) AS Issues,
+       IF(LeadID='notset',0,0) AS Cost,       
+       NTB, Product, Source, Medium       
+FROM (
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--УНИКАЛИЗИРУЕМ ПО LEADID
+SELECT EXTRACT(MONTH FROM Date) AS Month, EXTRACT(YEAR FROM Date) AS Year, Date, LeadID, ProductLine, Product, Source, Medium, NTB
+FROM (
+SELECT Date, LeadID, ProductLine, Product, Source, Medium, NTB,
+       ROW_NUMBER() OVER (PARTITION BY LeadID) AS ROW
+FROM (
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ОБРАБОТКА ЛИДОВ С LEADID       
+SELECT DATE(LeadDate) AS Date, leadid AS LeadID, PRODUCT_LINE AS ProductLine, 
+       CASE 
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Credit') THEN 'CC'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Debit|IPayroll|MasterCard|Gold') THEN 'DC'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Premium Direct') THEN 'Premium Product'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Mortgage') THEN 'ML / ML REF'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Personal Loans') THEN 'PL / PL REF / PL Auto'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Saving Accounts') THEN 'SA'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Standard Term Deposits') THEN 'TD'           
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'RKO') THEN 'SME'
+       ELSE 'Other' END AS Product, UTM_SOURCE AS Source, UTM_MEDIUM AS Medium,
+       NTB, STATUS AS StatusLead, APPROVAL AS ApprovalLead 
+FROM `raiffeisen-owox.Orders_CRM.CRM_orders`
+WHERE REGEXP_CONTAINS(UTM_MEDIUM,R"organic|referral|\(none\)") 
+      OR (UTM_MEDIUM IS NULL AND UTM_SOURCE IS NULL)
+--      AND REGEXP_MATCH(UTM_SOURCE,R'yandex$|google$|mytarget|facebook|dbm|astraone')      
+--      AND CAST(DATE(LeadDate) AS STRING) BETWEEN '2018-11-01' AND '2018-11-30'
+      AND CAST(DATE(LeadDate) AS STRING) BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'-01-01') AND CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING)
+--      AND REGEXP_CONTAINS(PRODUCT_LINE,r'Personal Loans')
+      AND leadid IS NOT NULL
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+UNION ALL
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ОБРАБОТКА ЛИДОВ БЕЗ LEADID
+SELECT Date, CAST(LeadID AS STRING) AS LeadID, ProductLine, Product, Source, Medium, NTB, StatusLead, ApprovalLead
+FROM (       
+SELECT Date,
+       ROW_NUMBER() OVER (PARTITION BY LeadID) AS LeadID,
+       ProductLine, Product, Source, Medium, NTB, StatusLead, ApprovalLead
+FROM (       
+SELECT DATE(LeadDate) AS Date, leadid AS LeadID, PRODUCT_LINE AS ProductLine, 
+       CASE 
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Credit') THEN 'CC'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Debit|IPayroll|MasterCard|Gold') THEN 'DC'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Premium Direct') THEN 'Premium Product'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Mortgage') THEN 'ML / ML REF'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Personal Loans') THEN 'PL / PL REF / PL Auto'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Saving Accounts') THEN 'SA'
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Standard Term Deposits') THEN 'TD' 
+           WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'RKO') THEN 'SME'
+       ELSE 'Other' END AS Product, UTM_SOURCE AS Source, UTM_MEDIUM AS Medium,
+       NTB, STATUS AS StatusLead, APPROVAL AS ApprovalLead 
+FROM `raiffeisen-owox.Orders_CRM.CRM_orders`
+WHERE REGEXP_CONTAINS(UTM_MEDIUM,R"organic|referral|\(none\)") 
+      OR (UTM_MEDIUM IS NULL AND UTM_SOURCE IS NULL)
+--      AND REGEXP_MATCH(UTM_SOURCE,R'yandex$|google$|mytarget|facebook|dbm|astraone')      
+--      AND CAST(DATE(LeadDate) AS STRING) BETWEEN '2018-11-01' AND '2018-11-30'
+      AND CAST(DATE(LeadDate) AS STRING) BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'-01-01') AND CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING)
+--      AND REGEXP_CONTAINS(PRODUCT_LINE,r'Personal Loans')
+      AND leadid IS NULL
+) AS t0
+) AS t1
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+) AS t1
+) AS t2
+WHERE ROW=1
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+) AS t0
+) AS t1
+GROUP BY Date, Month,	Year,	Sessions,	Leads, QLeads, Issues, Cost, NTB,	Product, Source, Medium
+--ORDER BY Year, Month, Product
