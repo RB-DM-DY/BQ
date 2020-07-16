@@ -1,0 +1,3 @@
+SELECT T,CP FROM `raiffeisen-owox.RB_DS_MediumLevel_ASIS.Step5_Final_Assambly_DS` T
+LEFT JOIN RB_DS_MediumLevel_ASIS.MD_CRM CP ON UTM_CAMPAIGN = Campaign
+WHERE T.Date >= '2020-01-01'
