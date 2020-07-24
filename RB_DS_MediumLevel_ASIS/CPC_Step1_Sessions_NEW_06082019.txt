@@ -93,7 +93,7 @@ FROM (
 SELECT REPLACE(day,"-","") AS date, "NULL" AS sessionId, cost AS adCost, 
        IF(REGEXP_CONTAINS(channel,"dir"),"yandex",channel)  AS source, ---!!!change "google" on channel
        "cpc" AS medium, campaign, EXTRACT(YEAR FROM CAST(day AS DATE)) AS YEAR
-FROM `raiffeisen-owox.OWOXBI_CostData.ancor_ga2_AND_publicis` 
+FROM `raiffeisen-owox.OWOXBI_CostData.ancore_ga2_campaign` 
 WHERE REGEXP_CONTAINS(campaign,"plt:mkb|mkb") 
       OR channel="dbm"
       AND cost<>0

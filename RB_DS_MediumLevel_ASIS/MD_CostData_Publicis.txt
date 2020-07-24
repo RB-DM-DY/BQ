@@ -1,0 +1,6 @@
+SELECT date Date ,0 Month,0 Year, 0 Sessions,0 Leads,0 QLeads,0 Issues, Cost,
+IF(REGEXP_CONTAINS(campaignGA, 'ntb:exist'), 'yes', 'no') NTB,
+`raiffeisen-owox.Common_query.getProductCampaign`(campaignGA) Product, 
+channel Source,'cpc' Medium, campaignGA Campaign,
+'FALSE' VB, 'TRUE' BrandFormance, campaignDBM BFName, 'FORM_LEAD' API
+FROM `raiffeisen-owox.OWOXBI_CostData.Cost_Data_Publicis_campaignGA`
