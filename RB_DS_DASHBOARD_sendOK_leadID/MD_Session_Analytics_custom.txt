@@ -1,0 +1,36 @@
+WITH 
+  LEAD_FORM AS (
+  SELECT *
+  FROM `raiffeisen-owox.SEO.forms`
+  WHERE cr_new = TRUE AND product_line in ("PL","CC","DC","ML","SA","Deposit","Premium")
+  ),
+  SENDOK AS (
+  SELECT DISTINCT
+         `raiffeisen-owox.Common_query.toDate`(date) as date,
+         geoNetwork.city,
+         channelGrouping,
+         trafficSource.medium medium,
+         trafficSource.source source,
+         trafficSource.campaign  campaign,
+         trafficSource.adContent  adContent,
+         trafficSource.keyword   keyword,
+         hits.eventInfo.eventAction  as eventAction,
+         hits.eventInfo.eventLabel   as eventLabel,
+         clientId
+  FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(hits) AS hits
+  WHERE
+        _TABLE_SUFFIX BETWEEN '20190401' AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -2 DAY) AS STRING),"-","")
+        AND hits.eventInfo.eventCategory = "send_ok"
+        AND hits.eventInfo.eventAction IN (SELECT event_action FROM LEAD_FORM)
+        AND not REGEXP_CONTAINS(hits.eventInfo.eventLabel, r"sme-cold|sme-meet")
+        AND REGEXP_CONTAINS(hits.page.hostname,R"^www\.raiffeisen\.ru")
+        AND REGEXP_CONTAINS(hits.page.pagePath,R"\/retail\/consumerloans\/auto|promo\/active\/pl\/auto\/all-aud\/classic\/center\/899")
+        AND REGEXP_CONTAINS(trafficSource.campaign,R"sp:auto")
+)
+/* список продуктов
+SELECT eventAction, count(eventLabel) unci
+FROM SENDOK
+GROUP BY eventAction
+ORDER BY unci DESC*/
+
+SELECT * FROM SENDOK

@@ -1,0 +1,1 @@
+SELECT * FROM `raiffeisen-owox.RB_DS_DASHBOARD_sendOK_leadID.CR_sendokJoinLead`

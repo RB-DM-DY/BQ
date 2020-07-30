@@ -1,0 +1,15 @@
+/*Уникализированные лиды по принипу суммы символов в полях сравнения*/
+
+SELECT *
+FROM (
+  SELECT *, ROW_NUMBER()  OVER (PARTITION BY LeadID) as LeadNumber
+  FROM (
+    SELECT * 
+    FROM ( SELECT LeadDate, leadid AS LeadID, PRODUCT_LINE AS ProductLine,
+         `raiffeisen-owox.Common_query.getProductCRM`(PRODUCT_LINE) AS Product,
+             UTM_MEDIUM, UTM_SOURCE, 
+             STATUS, APPROVAL, GOOGLE_ID
+      FROM `raiffeisen-owox.Orders_CRM.CRM_orders_19` as crm 
+      )
+    )
+  )   WHERE LeadNumber=1

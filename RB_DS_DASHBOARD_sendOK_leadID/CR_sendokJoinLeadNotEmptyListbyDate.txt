@@ -1,0 +1,22 @@
+WITH
+ LeadsCRM AS (SELECT * FROM `raiffeisen-owox.RB_DS_DASHBOARD_sendOK_leadID.MD_LeadsCRM_crmDateTimeOrders19`),
+ Session_Analytics AS (SELECT * FROM `raiffeisen-owox.RB_DS_DASHBOARD_sendOK_leadID.MD_Session_Analytics_2019sendokHitTimeNotSme`)
+
+--SELECT count(1), DELTA
+--FROM(
+  SELECT CRM.LeadDate,SA.date, SA.hour,	SA.minute, SA.eventLabel,	CRM.LeadID, EXTRACT(MINUTE FROM CRM.LeadDate) - SA.minute as DELTA
+  FROM (
+    SELECT *
+    FROM (
+     SELECT  SA, CRM
+     FROM Session_Analytics SA
+     LEFT JOIN (SELECT CRM FROM LeadsCRM as CRM) ON REGEXP_EXTRACT( CRM.LeadID , r"[0-9]+[a-zA-Z0-9]+[0-9]+") = REGEXP_EXTRACT( SA.eventLabel , r"[0-9]+[a-zA-Z0-9]+[0-9]+")
+     WHERE not CRM.LeadID is null
+     )
+     
+    JOIN (SELECT SEO FROM `raiffeisen-owox.SEO.forms` as SEO ) ON SA.eventAction = SEO.event_action
+    --WHERE eventLabel not like "%OAPI%" and date = "2019-09-26" and medium = "cpc"
+    --GROUP BY SA.date,SA.hour, SA.minute, SA.medium, SA.source, SA.campaign, SA.adContent, SA.keyword, CRM.LeadID, CRM.Date
+    --
+  )
+--)  GROUP BY DELTA

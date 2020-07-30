@@ -1,0 +1,21 @@
+WITH
+ LeadsCRM AS (SELECT * FROM `raiffeisen-owox.RB_DS_DASHBOARD_sendOK_leadID.MD_LeadsCRM`),
+ Session_Analytics AS (SELECT * FROM `raiffeisen-owox.RB_DS_DASHBOARD_sendOK_leadID.MD_Session_Analytics`)
+ 
+ SELECT Date, Product, 
+ `raiffeisen-owox.Common_query.getSourceUTM`(UTM_SOURCE) as source, 
+ `raiffeisen-owox.Common_query.getMediumCRM`(UTM_MEDIUM) as medium,
+ `raiffeisen-owox.Common_query.isAPIlead`(LeadID) as API,
+ count(distinct LeadID )  as Leads, 0 as Sendok
+ FROM LeadsCRM
+ GROUP BY Date, Product, UTM_SOURCE, UTM_MEDIUM, API
+ UNION ALL 
+ SELECT date as Date,
+ `raiffeisen-owox.Common_query.getProduct`(SEO.product_line) product,
+ `raiffeisen-owox.Common_query.getSourceUTM`(source) as source,
+ `raiffeisen-owox.Common_query.getMediumUTM`(medium) as medium,
+ `raiffeisen-owox.Common_query.isAPIlead`(eventLabel) as API,
+ 0 as Leads,  count(distinct eventLabel )  as Sendok
+ FROM Session_Analytics
+ LEFT JOIN (SELECT SEO FROM `raiffeisen-owox.SEO.forms` as SEO ) ON eventAction = SEO.event_action
+ GROUP BY Date, Product, source, medium, API

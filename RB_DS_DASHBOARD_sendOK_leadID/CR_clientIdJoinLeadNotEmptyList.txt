@@ -1,0 +1,17 @@
+WITH
+ LeadsCRM AS (SELECT * FROM `raiffeisen-owox.RB_DS_DASHBOARD_sendOK_leadID.MD_LeadsCRM_crmDateTimeOrders19SourceMediumIsNull`),
+ Session_Analytics AS (SELECT date, time, hour, minute, visitStartTime, medium, source, campaign, adContent, keyword, eventAction, eventLabel, clientId FROM `raiffeisen-owox.RB_DS_DASHBOARD_sendOK_leadID.MD_Session_Analytics_2019sendokHitTimeNotSme`)
+
+SELECT date, time, hour, minute, visitStartTime,  
+medium, source, campaign, adContent, keyword,
+CRM.LeadID, CRM.LeadDate  --, eventLabel--,CRM.LeadID
+FROM (
+ SELECT  *
+ FROM Session_Analytics SA
+ LEFT JOIN (SELECT CRM FROM LeadsCRM as CRM) ON CRM.GOOGLE_ID  =  clientId 
+ )
+LEFT JOIN (SELECT SEO FROM `raiffeisen-owox.SEO.forms` as SEO ) ON eventAction = SEO.event_action
+--WHERE eventLabel not like "%OAPI%" and date = "2019-09-26" and medium = "cpc"
+GROUP BY date, time, hour, minute, visitStartTime,medium, source, campaign, adContent, keyword, CRM.LeadID,  CRM.LeadDate
+HAVING not LeadID is null
+ORDER BY date desc

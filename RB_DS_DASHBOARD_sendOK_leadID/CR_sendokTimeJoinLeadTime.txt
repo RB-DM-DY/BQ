@@ -1,0 +1,34 @@
+WITH
+ LeadsCRM AS (SELECT * FROM `raiffeisen-owox.RB_DS_DASHBOARD_sendOK_leadID.MD_LeadsCRM_orders19_UtmMediumIsNullAndUtmSourceIsNullAndGoogleIdIsNull`),
+ Session_Analytics AS (SELECT date, time, hour, minute, visitStartTime, medium, source, campaign, adContent, keyword, eventAction, eventLabel, clientId FROM `raiffeisen-owox.RB_DS_DASHBOARD_sendOK_leadID.MD_Session_Analytics_2019sendokHitTimeNotSme`)
+
+
+/*Возьмем все нонейм лиды из CRM, найдем к ним send_ok в интервале 0-5 минут с исключенными send_ok с известными ИД.
+Оставим тот сендок, который совпадает по продукту  */
+
+
+SELECT LeadID, GA.medium,	GA.source,	GA.campaign,	GA.adContent,	GA.keyword
+FROM(
+    SELECT * , RANK() OVER(PARTITION BY LeadID ORDER BY GA.hour,	GA.minute, GA.time) as rank
+    FROM (
+      SELECT *
+      FROM LeadsCRM L
+      LEFT JOIN (SELECT S FROM `raiffeisen-owox.RB_DS_DASHBOARD_sendOK_leadID.CR_sendokJoinLeadNotEmptyList` S) ON L.LeadID = S.LeadID 
+      WHERE S.LeadID is null) CRM /*Исключим найденные лиды по leadID*/
+    FULL JOIN (
+      SELECT GA FROM (
+        SELECT `raiffeisen-owox.Common_query.toDate`(date) date, time, hour, minute, medium,	source,	campaign, adContent, keyword, SEO.product_line 
+        FROM(
+          SELECT *
+          FROM Session_Analytics GA
+          JOIN (SELECT SEO FROM `raiffeisen-owox.SEO.forms` as SEO ) ON eventAction = SEO.event_action
+          )
+         LEFT JOIN (SELECT SJL FROM `raiffeisen-owox.RB_DS_DASHBOARD_sendOK_leadID.CR_sendokJoinLeadNotEmptyListbyDate` SJL) ON eventLabel=SJL.eventLabel
+         WHERE SJL.eventLabel is null/*Исключим все известные сендоки*/
+         GROUP BY date, time, hour, minute, medium,	source,	campaign, adContent, keyword, SEO.product_line
+      ) GA
+    ) ON DATE(LeadDate) = GA.date AND EXTRACT(HOUR FROM LeadDate) = GA.hour AND EXTRACT(MINUTE FROM LeadDate)-GA.minute > -1 AND EXTRACT(MINUTE FROM LeadDate)-GA.minute < 5 AND STRPOS(Product,GA.product_line)=1
+    WHERE not GA.medium is null AND not LeadID is null
+    ORDER BY LeadID
+)
+WHERE rank=1

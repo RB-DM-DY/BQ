@@ -1,0 +1,26 @@
+WITH
+ LeadsCRM AS (SELECT * FROM `raiffeisen-owox.RB_DS_DASHBOARD_sendOK_leadID.MD_LeadsCRM_crmOrders19SourceMediumIsNullGoogleIDnotNull`),
+ Session_Analytics AS (SELECT date, channelGrouping, medium, source, campaign, adContent, keyword, eventAction, eventLabel, clientId FROM `raiffeisen-owox.RB_DS_DASHBOARD_sendOK_leadID.MD_Session_Analytics_2019sendokNotSme`)
+
+
+/*Найдем все лиды без меток и найдем к ним сендок с меткой по order id*/
+SELECT CRM.LeadID,  medium, source, campaign, adContent, keyword
+ --, eventLabel--,CRM.LeadID
+FROM (
+ SELECT  *
+ FROM Session_Analytics SA
+ LEFT JOIN (
+  SELECT CRM
+  FROM LeadsCRM as CRM
+  LEFT JOIN (
+    SELECT LeadID as SJLLeadID
+    FROM `raiffeisen-owox.RB_DS_DASHBOARD_sendOK_leadID.CR_sendokJoinLeadNotEmptyList` SJL) ON CRM.LeadID=SJLLeadID
+  WHERE SJLLeadID is null
+  ) ON CRM.GOOGLE_ID = clientId AND CRM.date = date
+ WHERE not CRM.LeadID is null
+ )
+LEFT JOIN (SELECT SEO FROM `raiffeisen-owox.SEO.forms` as SEO ) ON eventAction = SEO.event_action
+--WHERE eventLabel not like "%OAPI%" and date = "2019-09-26" and medium = "cpc"
+GROUP BY date,medium, source, campaign, adContent, keyword, CRM.LeadID
+HAVING not LeadID is null
+ORDER BY date desc

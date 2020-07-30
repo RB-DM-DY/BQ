@@ -1,0 +1,3 @@
+SELECT Date, Product, source, medium, API, SUM(Sendok) Sendok, SUM(Leads) Leads
+FROM `raiffeisen-owox.RB_DS_DASHBOARD_sendOK_leadID.CR_sendOk_lead_union`
+GROUP BY Date, Product, source, medium, API

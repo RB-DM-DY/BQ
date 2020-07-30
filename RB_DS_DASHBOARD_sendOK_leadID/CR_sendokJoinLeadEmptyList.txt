@@ -1,0 +1,18 @@
+WITH
+ LeadsCRM AS (SELECT * FROM `raiffeisen-owox.RB_DS_DASHBOARD_sendOK_leadID.MD_LeadsCRM`),
+ Session_Analytics AS (SELECT * FROM `raiffeisen-owox.RB_DS_DASHBOARD_sendOK_leadID.MD_Session_Analytics`)
+
+SELECT date,  
+`raiffeisen-owox.Common_query.getProduct`(SEO.product_line) product,
+eventLabel,
+CRM.LeadID --, eventLabel--,CRM.LeadID
+FROM (
+ SELECT  *
+ FROM Session_Analytics SA
+ LEFT JOIN (SELECT CRM FROM LeadsCRM as CRM) ON REGEXP_EXTRACT( CRM.LeadID , r"[0-9]+[a-zA-Z0-9]+[0-9]+") = REGEXP_EXTRACT( eventLabel , r"[0-9]+[a-zA-Z0-9]+[0-9]+")
+ )
+LEFT JOIN (SELECT SEO FROM `raiffeisen-owox.SEO.forms` as SEO ) ON eventAction = SEO.event_action
+--WHERE eventLabel not like "%OAPI%" and date = "2019-09-26" and medium = "cpc"
+GROUP BY date, product,  eventLabel, CRM.LeadID
+HAVING LeadID is null
+ORDER BY date desc

@@ -1,0 +1,35 @@
+WITH 
+  LEAD_FORM AS (
+  SELECT *
+  FROM `raiffeisen-owox.SEO.forms`
+  WHERE cr_new = TRUE 
+    AND product_line in ("PL","CC","DC","SME","ML","SA","Deposit","SME Lending","Premium")
+    AND NOT event_action = 'MORTGAGE_CONSULTATION_APPLICATION'
+  ),
+  SENDOK AS (
+  SELECT DISTINCT
+         `raiffeisen-owox.Common_query.toDate`(date) as date,
+         channelGrouping,
+         trafficSource.medium medium,
+         trafficSource.source source,
+         trafficSource.campaign  campaign,
+         trafficSource.adContent  adContent,
+         trafficSource.keyword   keyword,
+         hits.eventInfo.eventAction  as eventAction,
+         hits.eventInfo.eventLabel   as eventLabel,
+         clientId
+  FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(hits) AS hits
+  WHERE
+        _TABLE_SUFFIX BETWEEN REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -90 DAY) AS STRING),"-","") AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -2 DAY) AS STRING),"-","")
+        AND hits.eventInfo.eventCategory = "send_ok"
+        AND hits.eventInfo.eventAction IN (SELECT event_action FROM LEAD_FORM)
+        AND not REGEXP_CONTAINS(hits.eventInfo.eventLabel, r"sme-cold|sme-meet")
+        AND REGEXP_CONTAINS(hits.page.hostname,R"^www\.raiffeisen\.ru|.*ipoteka.raiffeisen.ru")
+)
+/* список продуктов
+SELECT eventAction, count(eventLabel) unci
+FROM SENDOK
+GROUP BY eventAction
+ORDER BY unci DESC*/
+
+SELECT * FROM SENDOK
