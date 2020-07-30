@@ -1,0 +1,85 @@
+WITH 
+CRM AS (
+  SELECT DATE(LeadDate) Date, leadid, TRIM(`raiffeisen-owox.Common_query.replaceUnicode`(UTM_CAMPAIGN)) UTM_CAMPAIGN, TRIM(UTM_CONTENT) UTM_CONTENT, TRIM(UTM_MEDIUM) UTM_MEDIUM, TRIM(UTM_SOURCE) UTM_SOURCE,
+  `raiffeisen-owox.Common_query.isQLeadCRM`(PRODUCT_LINE, STATUS, APPROVAL) QLead,
+  `raiffeisen-owox.Common_query.isIssueCRM`(PRODUCT_LINE, STATUS, APPROVAL) Issue
+  FROM `raiffeisen-owox.Orders_CRM.CRM_orders`
+  WHERE  REGEXP_CONTAINS(TRIM(UTM_MEDIUM),r'^email$|^sms$') 
+  AND DATE(LeadDate) >= '2020-01-01' 
+  AND 	PRODUCT_LINE <> 'RKO'
+  AND LOWER(UTM_CONTENT) LIKE '%abandoned%'
+  ),
+Site as (
+  SELECT  PARSE_DATE("%Y%m%d", Date) Date,CONCAT(clientId, visitStartTime) sessions, TRIM(`raiffeisen-owox.Common_query.replaceUnicode`(trafficSource.campaign)) campaign, TRIM(trafficSource.source) source, TRIM(trafficSource.medium) medium,  TRIM(trafficSource.adContent) adContent
+  FROM `raiffeisen-owox.64807083.ga_sessions_*`
+  WHERE  _TABLE_SUFFIX BETWEEN '20200101' AND FORMAT_DATE('%Y%m%d',CURRENT_DATE())
+  AND REGEXP_CONTAINS(TRIM(trafficSource.medium),r'^email$|^sms$') 
+  AND LOWER(trafficSource.adContent) LIKE '%abandoned%'
+),
+CAMPAIGN_LIST as (
+  SELECT UTM_CAMPAIGN
+  FROM ( 
+    SELECT UTM_CAMPAIGN
+    FROM CRM
+    GROUP BY  UTM_CAMPAIGN
+    --
+    UNION ALL
+    --
+    SELECT  campaign
+    FROM Site
+    GROUP BY campaign
+  )
+  WHERE UTM_CAMPAIGN LIKE '%|%'
+  GROUP BY UTM_CAMPAIGN
+),
+CAMP_PARAMETRS as (
+  SELECT UTM_CAMPAIGN, service,
+  MAX(IF(key = 'pr', value, NULL)) as pr,
+  MAX(IF(key = 'sp', value, NULL)) as sp,
+  MAX(IF(key = 'ssp', value, NULL)) as ssp,
+  MAX(IF(key = 'plt', value, NULL)) as plt,
+  MAX(IF(key = 'tg', value, NULL)) as tg,
+  MAX(IF(key = 'aud', value, NULL)) as aud,
+  MAX(IF(key = 'sem', value, NULL)) as sem,
+  MAX(IF(key = 'bids', value, NULL)) as bids,
+  MAX(IF(key = 'model', value, NULL)) as model,
+  MAX(IF(key = 'offer', value, NULL)) as offer,
+  MAX(IF(key = 'cntr', value, NULL)) as cntr,
+  MAX(IF(key = 'fdistr', value, NULL)) as fdistr,
+  MAX(IF(key = 'city', value, NULL)) as city,
+  MAX(IF(key = 'vb',  'vb', NULL)) as vb,	
+  MAX(IF(key = 'classic', 'classic', NULL)) as classic,	
+  MAX(IF(key = 'bf', 'bf', NULL)) as bf,	
+  MAX(IF(key = 'stories', 'stories', NULL)) as stories,	
+  MAX(IF(key = 'video', 'video', NULL)) as video,	
+  MAX(IF(key = 'qm', 'qm', NULL)) as qm,	
+  MAX(IF(key = 'brnd', 'brnd', NULL)) as brnd,	
+  MAX(IF(key = 'promo', 'promo', NULL)) as promo,	
+  MAX(IF(key = 'exp', value, NULL)) as exp,	
+  MAX(IF(key = 'splt', 'splt', NULL)) as splt,	
+  MAX(IF(key = 'quiz', 'quiz', NULL)) as quiz	
+  FROM (
+    SELECT UTM_CAMPAIGN,service, SPLIT(p, ':')[SAFE_OFFSET(0)] key, SPLIT(p, ':')[SAFE_OFFSET(1)] value 
+    FROM (
+      SELECT *,IF( REGEXP_CONTAINS( SPLIT(UTM_CAMPAIGN, "|")[SAFE_OFFSET(0)],':'),null, SPLIT(UTM_CAMPAIGN, "|")[SAFE_OFFSET(0)]) as service, split(UTM_CAMPAIGN, '|') as parse FROM CAMPAIGN_LIST
+      ) t, t.parse p
+  )
+  GROUP BY UTM_CAMPAIGN,service
+)
+
+
+SELECT *
+FROM(
+    SELECT  DATE, UTM_CAMPAIGN, UTM_CONTENT,UTM_MEDIUM, UTM_SOURCE, 0 Messages, 0 Sessions,
+    count(leadid) Leads, countif(QLead = 'QLead') QLeads,countif(Issue = 'Issue') Issues
+    FROM CRM
+    GROUP BY  DATE, UTM_CAMPAIGN, UTM_CONTENT,UTM_MEDIUM, UTM_SOURCE
+    --
+    UNION ALL
+    --
+    SELECT  date, campaign, adContent, medium, source, 0 Messages,
+    count(sessions) Sessions,0 Leads, 0 QLeads, 0 Issues
+    FROM Site
+    GROUP BY DATE,campaign, adContent, source, medium
+)
+LEFT JOIN CAMP_PARAMETRS USING (UTM_CAMPAIGN)
