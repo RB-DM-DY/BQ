@@ -1,0 +1,5 @@
+SELECT channel, impressions, clicks, cost, day, campaign, campaignId FROM `raiffeisen-owox.OWOXBI_CostData.ancore_ga2_campaign` 
+UNION ALL
+SELECT channel, impressions, clicks, cost, CAST(day AS STRING), 
+'publicis|pr:dc|sp:cashback|plt:display|tg:aud|aud:interests|bids:cpm|classic|bf|video|' campaign,
+campaignId FROM `raiffeisen-owox.OWOXBI_CostData.CostData_Publicis_DBM`
