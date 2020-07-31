@@ -1,0 +1,46 @@
+SELECT date as Date,	source as Source,	campaign as Campaign,	adContent as Content, NTB, API, product as Product, source_name,
+  sum(sessions) as Sessions,
+  sum(Leads) as Leads,
+  sum(QLeads) as QLeads,
+  sum(Issues) as Issues,
+  sum( Cost) as Costs
+FROM (
+  SELECT date, source, campaign,	adContent,	NTB,  API,
+    `raiffeisen-owox.Common_query.getSourceUTM`(source) as source_name,
+    `raiffeisen-owox.Common_query.getProductCampaign`(campaign) as product,
+    sum(sessions) as sessions,
+    0 as leads,
+    0 as qleads,
+    0 as issues,
+    0 as Cost
+  FROM `raiffeisen-owox.RB_DS_MediumLevelAffiliate_ASIS.AFI_Session_1` as an
+  group by date,	source,	campaign,	adContent, NTB, API, product, source_name
+  UNION ALL  (
+    SELECT cpl.date, cpl.source, cpl.campaign, cpl.adContent, cpl.NTB , cpl.API , cpl.source_name , cpl.product ,
+    0 as sessions,
+    cpl.leads ,
+    cpl.qleads ,
+    cpl.issues ,
+    leads * IFNULL( cs1.CPL,0) as Cost
+    FROM (
+      SELECT DISTINCT *,
+       concat(cast ( EXTRACT( MONTH FROM Date) as STRING),cast ( EXTRACT( Year FROM Date)as STRING), product, source_name) as keyc
+      FROM (
+        SELECT Date as date, Source as source, UTM_CAMPAIGN as campaign, UTM_CONTENT as adContent, NTB, API,
+        `raiffeisen-owox.Common_query.getSourceUTM`(Source) as source_name,
+        `raiffeisen-owox.Common_query.getProductCRM`(ProductLine) as product,
+        0 as sessions,
+        sum(Leads) as leads,
+        sum(QLeads) as qleads,
+        sum(Issues) as issues
+        FROM `raiffeisen-owox.RB_DS_MediumLevelAffiliate_ASIS.AFI_Leads_1` as crm
+        group by date,	source,	campaign,	adContent,	NTB, API, product
+        )
+      ) as cpl
+      left join `raiffeisen-owox.RB_DS_MediumLevelAffiliate_ASIS.AFI_Cost_1` as cs1
+      on cpl.keyc = cs1.key
+    )
+    UNION ALL 
+    SELECT * FROM RB_DS_MediumLevelAffiliate_ASIS.CR_Grid_Cost_Calculate
+  )
+group by date,	source,	source_name, campaign,	adContent,	NTB, API, Product

@@ -1,0 +1,62 @@
+
+/* 
+
+1 Выбрать данные из таблицы затрат в мес где расходы равны 0
+2 Присоедениеть их фактической таблице лидов
+3 Расчитать по сетке стоимость
+
+
+*/
+
+WITH 
+ZeroFact as (
+  SELECT 
+  DATE_TRUNC(PARSE_DATE('%d.%m.%Y',string_field_0), MONTH) date, 
+  `raiffeisen-owox.Common_query.getSourceUTM`(string_field_1) source,
+  ARRAY(SELECT p_line From  `raiffeisen-owox.Common_query.Product_full_name` P, P.PRODUCT_LINE as p_line  WHERE SPLIT(string_field_2,"из ")[SAFE_OFFSET(1)]= P.product_name ) AS product
+  FROM `raiffeisen-owox.RB_DS_MediumLevelAffiliate_ASIS.AFI_Cost`
+  WHERE int64_field_3 > 100 AND NOT string_field_1 IS NULL
+  ORDER BY date
+),
+Orders as (
+  SELECT
+  DATE(LEAD_DATE) DATE,
+  `raiffeisen-owox.Common_query.getSourceUTM`(UTM_SOURCE) SOURCE,
+  `raiffeisen-owox.Common_query.isLeadAPI`(ORDER_ID) as API,
+  UTM_SOURCE,
+  ORDER_ID, PRODUCT_LINE, NTB, UTM_CAMPAIGN, UTM_CONTENT, STATUSES 
+  FROM `raiffeisen-owox.CRM.orders` 
+  WHERE DATE(_PARTITIONTIME) > DATE_ADD(CURRENT_DATE(), INTERVAL -3 MONTH)
+    AND UTM_MEDIUM LIKE "affiliate"
+),
+Price as (
+  SELECT 
+  `raiffeisen-owox.Common_query.getSourceUTM`(Partner) Partner, Product, Status, Approval, CostPerOrder
+  FROM `RB_DS_MediumLevelAffiliate_ASIS.price_list_*`
+  WHERE _TABLE_SUFFIX = (SELECT MAX(_TABLE_SUFFIX) FROM `RB_DS_MediumLevelAffiliate_ASIS.price_list_*`)
+)
+
+
+SELECT DATE as date,	UTM_SOURCE as source,	UTM_CAMPAIGN as campaign,	UTM_CONTENT as adContent, NTB NTB, API API, SOURCE  as source_name, 
+`raiffeisen-owox.Common_query.getProductCRM`(PRODUCT_LINE) as Product,
+  0 as sessions,
+  0 as leads,
+  0 as qleads,
+  0 as issues,
+  sum( CostPerOrder) as Cost
+  
+FROM ( 
+
+SELECT O.DATE,	O.UTM_SOURCE,	O.UTM_CAMPAIGN,	O.UTM_CONTENT, O.NTB, O.API, O.SOURCE ,O.PRODUCT_LINE,P.CostPerOrder
+FROM(
+  SELECT O,S, Z -- 
+  FROM Orders O, O.STATUSES S
+  LEFT JOIN ZeroFact Z 
+    ON DATE_TRUNC(O.DATE , MONTH) = Z.date AND O.SOURCE = Z.source AND O.PRODUCT_LINE IN UNNEST(Z.product)
+  WHERE Z.date IS NULL
+)  
+ JOIN PRICE P 
+   ON   P.Product = O.PRODUCT_LINE AND O.source = P.Partner AND P.Status = S.STATUS    
+  
+ )
+GROUP BY  date,	source,	source_name, campaign,	adContent,	NTB, API, Product

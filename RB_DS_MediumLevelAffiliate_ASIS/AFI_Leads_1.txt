@@ -1,0 +1,19 @@
+WITH CRM_AFI AS (
+ SELECT Date, LeadID ,	Source, UTM_SOURCE,	UTM_CAMPAIGN,	UTM_CONTENT,	NTB,	API,	ProductLine, QLead , Issue 
+ FROM `raiffeisen-owox.RB_DS_MediumLevelAffiliate_ASIS.LeadsCRM`
+ WHERE medium = "affiliate"
+ GROUP BY Date, LeadID ,	Source, UTM_SOURCE,	UTM_CAMPAIGN,	UTM_CONTENT,	NTB,	API,	ProductLine, QLead , Issue 
+)
+
+
+SELECT Date, UTM_SOURCE as Source, 
+        REPLACE(IFNULL(UTM_CAMPAIGN,"(not set)"), "(none)", "(not set)") as UTM_CAMPAIGN,
+        REPLACE(IFNULL(UTM_CONTENT,"(not set)"), "(none)", "(not set)")  as UTM_CONTENT, NTB, API,
+        CRM_AFI.ProductLine as ProductLine,
+      count( LeadID ) as Leads,
+      countif(QLead = "QLead" ) as QLeads,
+      countif(Issue = "Issue" ) as Issues /*,
+concat(cast(Date AS STRING) , Source, UTM_CAMPAIGN) as key*/
+FROM CRM_AFI
+--WHERE CRM_AFI.LeadNumber > 1
+group by Date, Source, UTM_CAMPAIGN, UTM_CONTENT, NTB, API, ProductLine

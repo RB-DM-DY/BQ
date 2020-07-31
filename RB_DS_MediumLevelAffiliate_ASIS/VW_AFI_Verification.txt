@@ -1,0 +1,1 @@
+SELECT * FROM `raiffeisen-owox.RB_DS_MediumLevelAffiliate_ASIS.AFI_Verification` 

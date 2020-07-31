@@ -1,0 +1,39 @@
+/*Подтвержденные затраты на афилятов. Обработка AFI_Cost*/
+SELECT sum(cost) / sum(leads) as CPL, key
+FROM(
+  select distinct * 
+  from (
+    SELECT *,  CONCAT(month,	year,	product, source) AS keyc
+    FROM(
+      SELECT --string_field_0 AS date,
+            cast (cast (SUBSTR(string_field_0, 4, 2) as INT64) as STRING) AS month,
+            SUBSTR(string_field_0, 7, 4) AS year,
+            `raiffeisen-owox.Common_query.getSourceUTM`(string_field_1) as source,
+            (SELECT product From  `raiffeisen-owox.Common_query.Product_full_name` as t2 WHERE ltrim(t1.string_field_2,"	SUM из ") = t2.product_name ) AS product, 
+      int64_field_3 AS cost       
+      FROM `raiffeisen-owox.RB_DS_MediumLevelAffiliate_ASIS.AFI_Cost` as t1
+      WHERE t1.int64_field_3 > 0
+      ) 
+   )as cost
+  left join (
+    SELECT distinct * 
+    From (
+      SELECT  concat(
+              cast ( EXTRACT( MONTH FROM Date) as STRING),
+              cast ( EXTRACT( Year FROM Date)as STRING),
+              `raiffeisen-owox.Common_query.getProductCRM`(crm.ProductLine ),
+              `raiffeisen-owox.Common_query.getSourceUTM`(crm.Source )) as key,
+              count(distinct  LeadID ) as Leads,
+              countif(QLead = "QLead" ) as QLeads,
+              countif(Issue = "Issue" ) as Issues /*,
+      concat(cast(Date AS STRING) , Source, UTM_CAMPAIGN) as key*/
+      FROM `raiffeisen-owox.Common_query.LeadsCRM`  AS crm
+      WHERE crm.medium  = "affiliate" --AND crm.Issue  = "Issue"
+      group by key
+      ) 
+    )as ld
+    on cost.keyc = ld.key
+  )
+
+group by key
+HAVING not key is null

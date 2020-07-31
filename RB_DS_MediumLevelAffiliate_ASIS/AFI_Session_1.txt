@@ -1,0 +1,17 @@
+SELECT date,	source,	campaign, adContent,	ifnull(NTB,"yes") as NTB, API,
+      count( distinct   sessionId) as sessions
+FROM (
+  SELECT DISTINCT * 
+  FROM (
+    SELECT date, source, campaign, adContent, sessionId,
+    "FORM_LEAD" as API
+    FROM `raiffeisen-owox.RB_DS_MediumLevelAffiliate_ASIS.SessionAnalytics` AS an
+    WHERE an.medium  = "affiliate" and not sessionId  is null --and an.sessionId = "479048476.1536211019_1536211323478"
+    GROUP BY date, source, campaign, adContent, API, sessionId
+    ) an2 
+  left join (
+    SELECT NTB, TsessionId
+    FROM `raiffeisen-owox.Dictionary_US.NTB_Identification_Query`) as ntb
+    on an2.sessionId = ntb.TsessionId
+  )
+GROUP BY date,	source,	campaign, adContent,	NTB, API
