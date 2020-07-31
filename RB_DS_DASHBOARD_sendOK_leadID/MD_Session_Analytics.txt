@@ -20,7 +20,7 @@ WITH
          clientId
   FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(hits) AS hits
   WHERE
-        _TABLE_SUFFIX BETWEEN REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -90 DAY) AS STRING),"-","") AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -2 DAY) AS STRING),"-","")
+        _TABLE_SUFFIX BETWEEN REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -90 DAY) AS STRING),"-","") AND REPLACE(CAST(CURRENT_DATE() AS STRING),"-","")
         AND hits.eventInfo.eventCategory = "send_ok"
         AND hits.eventInfo.eventAction IN (SELECT event_action FROM LEAD_FORM)
         AND not REGEXP_CONTAINS(hits.eventInfo.eventLabel, r"sme-cold|sme-meet")
