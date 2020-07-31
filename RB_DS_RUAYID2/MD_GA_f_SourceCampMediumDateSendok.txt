@@ -1,0 +1,19 @@
+
+SELECT DISTINCT
+     /*  `raiffeisen-owox.Common_query.toDate`(date) as date,
+       channelGrouping,
+       trafficSource.medium medium,
+       trafficSource.source source,
+       trafficSource.campaign  campaign,
+       trafficSource.adContent  adContent,
+       trafficSource.keyword   keyword,
+       hits.eventInfo.eventAction  as eventAction,
+       hits.eventInfo.eventLabel   as eventLabel,*/
+       clientId
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(hits) AS hits
+WHERE
+      _TABLE_SUFFIX BETWEEN "20191113" AND "20191129"
+      AND hits.eventInfo.eventCategory = "send_ok"
+      AND trafficSource.source = "facebook"
+      AND trafficSource.medium  = "cpc"
+      AND REGEXP_CONTAINS(trafficSource.campaign, r'qm') 

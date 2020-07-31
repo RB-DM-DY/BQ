@@ -1,0 +1,25 @@
+WITH CRM as (
+  SELECT  Date, LeadID, PRODUCT_LINE, STATUS, APPROVAL, NTB, UTM_CAMPAIGN CAMPAIGN, UTM_SOURCE SOURCE
+  FROM `raiffeisen-owox.RB_DS_RUAYID2.MD_LeadsCRM_UTM_CPC`
+  ),
+  PARAM as (
+  SELECT P.LeadID LeadID, PARAMETERS
+  FROM(
+    SELECT  LeadID,`raiffeisen-owox.Common_query.getCampaignParamTable`(
+      `raiffeisen-owox.Common_query.replaceUnicode`(UTM_CAMPAIGN)) PARAM
+    FROM `raiffeisen-owox.RB_DS_RUAYID2.MD_LeadsCRM_UTM_CPC`
+    ) as P, UNNEST(P.PARAM) as PARAMETERS
+  )
+  
+    SELECT 
+          Date, LeadID,
+         `raiffeisen-owox.Common_query.getProductCRM`(PRODUCT_LINE) AS PRODUCT,
+         `raiffeisen-owox.Common_query.getSourceUTM`(SOURCE) SOURCE,
+         NTB,
+         `raiffeisen-owox.Common_query.isQLeadCRM`(PRODUCT_LINE,STATUS,APPROVAL) QLEAD,
+         `raiffeisen-owox.Common_query.isIssue`(`raiffeisen-owox.Common_query.getProductCRM`(PRODUCT_LINE),STATUS,APPROVAL) ISSUE,
+         PARAM.PARAMETERS
+    FROM CRM    
+    INNER JOIN (SELECT PARAM FROM PARAM ) ON PARAM.LeadID=LeadID
+
+    

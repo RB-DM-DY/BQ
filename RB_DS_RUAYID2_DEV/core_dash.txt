@@ -1,0 +1,33 @@
+WITH 
+CRM AS (
+  SELECT DATE(LEAD_DATE) DATE , UTM_SOURCE ,UTM_MEDIUM, UTM_CAMPAIGN, 0 SESSION,  COUNT( ORDER_ID ) LEADS , 0 COST
+  FROM `raiffeisen-owox.CRM.orders` WHERE DATE(_PARTITIONTIME) = "2020-06-17" 
+  GROUP BY  LEAD_DATE , UTM_MEDIUM, UTM_SOURCE, UTM_CAMPAIGN
+),
+SITE AS (
+  SELECT PARSE_DATE('%Y%m%d',date) date, trafficSource.source, trafficSource.medium ,trafficSource.campaign, COUNT(clientId) sessions, 0 LEADS , 0 COST
+  FROM `raiffeisen-owox.64807083.ga_sessions_20200617`
+  GROUP BY date, trafficSource.campaign ,trafficSource.source, trafficSource.medium 
+),
+COST AS(
+  SELECT PARSE_DATE('%Y%m%d',date) date, source, medium, campaign, 0 sessions, 0 LEADS ,ROUND(SUM(adCost),0) COST
+  FROM `raiffeisen-owox.OWOXBI_CostData.CostData_20200617`
+  GROUP BY date, source, medium, campaign
+)
+
+
+
+SELECT  DATE ,  
+`raiffeisen-owox.Common_query.replaceUnicode`(UTM_CAMPAIGN) UTM_CAMPAIGN,
+`raiffeisen-owox.Common_query.getSourceUTM`(UTM_SOURCE) UTM_SOURCE, 
+`raiffeisen-owox.Common_query.getMediumUTM`(UTM_MEDIUM) UTM_MEDIUM,
+SUM(SESSION) SESSION,  SUM( LEADS) LEADS , SUM(COST) COST
+FROM (
+  SELECT * FROM CRM
+  UNION ALL 
+  SELECT * FROM SITE
+  UNION ALL 
+  SELECT * FROM COST
+  )
+GROUP BY  DATE , UTM_SOURCE ,UTM_MEDIUM, UTM_CAMPAIGN
+  

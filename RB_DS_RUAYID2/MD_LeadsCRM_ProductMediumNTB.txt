@@ -1,0 +1,19 @@
+/*Уникализированные лиды по принипу суммы символов в полях сравнения*/
+
+SELECT *
+FROM (
+  SELECT *, ROW_NUMBER()  OVER (PARTITION BY LeadID) as LeadNumber
+  FROM (
+    SELECT * 
+    FROM ( 
+      SELECT 
+          DATE(LeadDate) AS Date,
+          leadid AS LeadID,
+          PRODUCT_LINE, UTM_MEDIUM, STATUS, APPROVAL, NTB, OPEN_DATE 
+         FROM `raiffeisen-owox.Orders_CRM.CRM_orders` 
+    /*WHERE CAST(DATE(LeadDate) AS STRING) BETWEEN CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -90 DAY) AS STRING) 
+          AND CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -2 DAY) AS STRING) --AND leadid not like "%OAPI%"*/
+          GROUP BY Date, LeadID, PRODUCT_LINE, UTM_MEDIUM, STATUS, APPROVAL, NTB , OPEN_DATE
+      )     
+    )
+  )   WHERE LeadNumber=1

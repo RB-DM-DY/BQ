@@ -1,0 +1,44 @@
+
+WITH CAMPAIGN_ARR as (
+-- массив кампаний с распределением долей по сеансам в рамках клика с cid
+  SELECT  date, cid, ARRAY_AGG(STRUCT(campaign,sessions)) c_arr
+  FROM(
+    SELECT day date, cid, campaign, SUM(sessions) sessions-- / SUM(sessions) OVER (PARTITION BY cid) as share
+    FROM
+    (
+      SELECT day , cid
+      FROM `raiffeisen-owox.OWOXBI_CostData.CostData_Publicis_DBM`
+      WHERE day BETWEEN '2020-07-21' AND DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY)
+    )
+    JOIN ( 
+          SELECT date, keyword, campaign, COUNT( CONCAT(clientId,visitId) ) sessions
+          FROM (  
+            SELECT PARSE_DATE('%Y%m%d',date) date, clientId, visitId, trafficSource.referralPath ,trafficSource.campaign, trafficSource.source, trafficSource.medium, trafficSource.keyword, trafficSource.adContent
+            FROM `raiffeisen-owox.64807083.ga_sessions_*`
+            WHERE _TABLE_SUFFIX BETWEEN FORMAT_DATE('%Y%m%d', '2020-07-21')  AND FORMAT_DATE('%Y%m%d', DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY))
+          )
+          GROUP BY date, keyword, campaign   
+        )  ON  STRPOS(keyword ,CAST(cid as STRING)) >0 AND day = date
+
+    GROUP BY date, cid, campaign
+  )
+  GROUP BY date, cid
+)
+
+SELECT cid, date, channel, campaignDBM, campaignId, campaign,
+IF(NOT total_sesions_per_id IS null,ROUND(impressions * total_sesions_per_id / sessions ),impressions) impressions,
+IF(NOT total_sesions_per_id IS null,ROUND(clicks * total_sesions_per_id / sessions ),clicks) clicks,
+IF(NOT total_sesions_per_id IS null,cost * total_sesions_per_id / sessions ,cost) cost
+FROM(
+  SELECT *, (SELECT SUM(sessions) FROM T.c_arr) as total_sesions_per_id --cid, channel ,campaign,cost, ROUND(cost / share , 0) cost2
+  FROM(--таблица с массивом кампаний и долей сеансов 
+    SELECT *
+    FROM (
+      SELECT cid, channel, impressions, clicks, cost, day date, campaign campaignDBM, campaignId
+      FROM `raiffeisen-owox.OWOXBI_CostData.CostData_Publicis_DBM`
+      WHERE day BETWEEN '2020-07-21' AND DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY)
+    )
+    LEFT JOIN CAMPAIGN_ARR USING(cid, date)
+  ) T
+) T1, T1.c_arr 
+

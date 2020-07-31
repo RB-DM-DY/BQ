@@ -1,0 +1,25 @@
+WITH CRM as (
+  SELECT  Date, LeadID, PRODUCT_LINE, UTM_MEDIUM, STATUS, APPROVAL, NTB, OPEN_DATE
+  FROM `raiffeisen-owox.RB_DS_RUAYID2.MD_LeadsCRM_ProductMediumNTB`
+  )
+
+SELECT 
+FORMAT_DATE("%Y-%m", Date) as MONTH , PRODUCT, MEDIUM, NTB, COUNT(distinct LeadID) as ISSUES, ISSUE_V1, ISSUE_V2, ISSUE_V3
+FROM(
+  SELECT 
+        Date, LeadID, PRODUCT, MEDIUM, NTB,
+       `raiffeisen-owox.Common_query.isIssue`(PRODUCT, STATUS, APPROVAL ) AS ISSUE_V1,
+       `raiffeisen-owox.Common_query.isIssueV2`(PRODUCT, STATUS, APPROVAL ) AS ISSUE_V2,
+       `raiffeisen-owox.Common_query.isIssueV3`(PRODUCT, STATUS, APPROVAL,OPEN_DATE ) as ISSUE_V3
+  FROM (
+    SELECT 
+          Date, LeadID,
+         `raiffeisen-owox.Common_query.getProductCRM`(PRODUCT_LINE) AS PRODUCT,
+         `raiffeisen-owox.Common_query.getMediumCRM`(UTM_MEDIUM) AS MEDIUM,
+         NTB ,STATUS,APPROVAL, OPEN_DATE
+    FROM CRM
+  ) 
+  GROUP BY Date, LeadID, PRODUCT, MEDIUM, NTB, ISSUE_V1, ISSUE_V2, ISSUE_V3
+ HAVING ISSUE_V1 = "Issue" OR ISSUE_V2 = "Issue"
+)
+GROUP BY MONTH , PRODUCT, MEDIUM, NTB,  ISSUE_V1, ISSUE_V2, ISSUE_V3

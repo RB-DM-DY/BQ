@@ -1,0 +1,25 @@
+WITH STAT AS (SELECT 
+`raiffeisen-owox.Common_query.toDate`(Date) date,
+SUM(Impressions) impess
+FROM `raiffeisen-owox.Dictionary_US.Wordstat_Product` 
+GROUP BY date
+ORDER BY date DESC)
+
+
+SELECT DAYOFYEAR,avg(coef) coeficient, avg(trend) trend
+FROM(
+SELECT YEAR, DAYOFYEAR, DAYOFWEEK, avg(clear ) as coef, SUM(MAVG) / SUM(yearMAVG) as trend
+FROM(
+  SELECT impess / MAVG as clear, MAVG, impess, date, EXTRACT(YEAR FROM date) YEAR, EXTRACT(MONTH FROM date) MONTH, EXTRACT(ISOWEEK FROM date) ISOWEEK,
+  EXTRACT(DAYOFWEEK FROM date) DAYOFWEEK, 
+  IF ( EXTRACT(DAYOFYEAR FROM date) + EXTRACT(YEAR FROM date) - 2017 > 365,EXTRACT(DAYOFYEAR FROM date) - 365 + EXTRACT(YEAR FROM date) - 2017, EXTRACT(DAYOFYEAR FROM date) + EXTRACT(YEAR FROM date) - 2017) DAYOFYEAR , 
+  SUM(impess)   OVER (PARTITION BY EXTRACT(YEAR FROM date)) yearImpres,
+  AVG(MAVG)   OVER (PARTITION BY EXTRACT(YEAR FROM date)) yearMAVG
+  FROM(
+    SELECT date, impess,
+    AVG( impess ) OVER (ORDER BY date ASC  ROWS BETWEEN 3 PRECEDING AND 3 FOLLOWING  ) MAVG,
+    FROM STAT )
+    )
+GROUP BY YEAR, DAYOFYEAR , DAYOFWEEK
+)
+GROUP BY DAYOFYEAR

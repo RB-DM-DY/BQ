@@ -1,0 +1,9 @@
+SELECT DATE(LeadDate ) Date,
+`raiffeisen-owox.Common_query.getMediumCRM`( UTM_MEDIUM ) as MEDIUM,
+count( leadid ) as Leads
+FROM `raiffeisen-owox.Orders_CRM.CRM_orders`
+WHERE DATE(LeadDate ) BETWEEN  DATE_TRUNC( DATE_ADD( CURRENT_DATE(),INTERVAL  -1 DAY), MONTH)  AND DATE_ADD( CURRENT_DATE(),INTERVAL  -1 DAY)
+  AND PRODUCT_LINE LIKE "%Deb%"
+GROUP BY Date, MEDIUM
+--HAVING NOT MEDIUM  = "OTHER"
+ORDER BY Date 

@@ -1,0 +1,4 @@
+
+  SELECT *
+  FROM `raiffeisen-owox.OWOXBI_CostData.CostData_20200617`
+

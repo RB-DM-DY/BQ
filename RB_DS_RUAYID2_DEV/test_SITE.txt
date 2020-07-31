@@ -1,0 +1,4 @@
+
+  SELECT date, clientId, visitId, trafficSource.referralPath ,trafficSource.campaign, trafficSource.source, trafficSource.medium, trafficSource.keyword, trafficSource.adContent
+  FROM `raiffeisen-owox.64807083.ga_sessions_20200617`
+

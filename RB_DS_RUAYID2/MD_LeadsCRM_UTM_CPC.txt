@@ -1,0 +1,18 @@
+/*Уникализированные лиды по принипу суммы символов в полях сравнения*/
+
+SELECT *
+FROM (
+  SELECT *, ROW_NUMBER()  OVER (PARTITION BY LeadID) as LeadNumber
+  FROM (
+    SELECT * 
+    FROM ( 
+      SELECT 
+          DATE(LeadDate) AS Date,
+          leadid AS LeadID,
+          PRODUCT_LINE,  STATUS, APPROVAL, NTB, UTM_MEDIUM, UTM_CAMPAIGN ,UTM_CONTENT ,UTM_SOURCE ,utm_term as UTM_TERM
+      FROM `raiffeisen-owox.Orders_CRM.CRM_orders` 
+      WHERE UTM_MEDIUM = "cpc" AND DATE(LeadDate) > "2018-06-01"
+      GROUP BY Date, LeadID, PRODUCT_LINE, UTM_MEDIUM, STATUS, APPROVAL, NTB , UTM_CAMPAIGN ,UTM_CONTENT ,UTM_SOURCE ,UTM_TERM
+      )     
+    )
+  )   WHERE LeadNumber=1

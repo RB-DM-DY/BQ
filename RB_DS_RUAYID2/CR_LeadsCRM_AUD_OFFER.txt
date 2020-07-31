@@ -1,0 +1,38 @@
+WITH CRM as (
+  SELECT  Date, LeadID, PRODUCT_LINE, STATUS, APPROVAL, NTB, UTM_MEDIUM MEDIUM, UTM_CAMPAIGN CAMPAIGN, UTM_CONTENT CONTENT, UTM_SOURCE SOURCE, UTM_TERM KEYWORD
+  FROM `raiffeisen-owox.RB_DS_RUAYID2.MD_LeadsCRM_UTM`
+  ),
+  PARAM as (
+  SELECT P.LeadID LeadID, PARAMETERS
+  FROM(
+    SELECT  LeadID,`raiffeisen-owox.Common_query.getParamTable`(UTM_TERM) PARAM
+    FROM `raiffeisen-owox.RB_DS_RUAYID2.MD_LeadsCRM_UTM`
+    ) as P, UNNEST(P.PARAM) as PARAMETERS
+  )
+
+SELECT * --count(distinct LeadID)
+FROM (
+  SELECT 
+        *
+  FROM (
+    SELECT 
+          Date, LeadID,
+         `raiffeisen-owox.Common_query.getProductCRM`(PRODUCT_LINE) AS PRODUCT,
+         `raiffeisen-owox.Common_query.getMediumCRM`(MEDIUM) AS MEDIUM,
+         `raiffeisen-owox.Common_query.getSourceUTM`(SOURCE) SOURCE,
+         CAMPAIGN, CONTENT, KEYWORD, NTB,
+         `raiffeisen-owox.Common_query.isQLead`(PRODUCT_LINE,STATUS,APPROVAL) QLEAD,
+         `raiffeisen-owox.Common_query.isIssue`(PRODUCT_LINE,STATUS,APPROVAL) ISSUE
+    FROM CRM    
+    INNER JOIN (SELECT PARAM FROM PARAM WHERE PARAMETERS LIKE "%cor-%" OR PARAMETERS LIKE "%aud-%") ON PARAM.LeadID=LeadID
+    WHERE PARAM.PARAMETERS IN ("cor-2295032",
+"cor-2295035",
+"cor-860900631",
+"cor-859358995",
+"cor-859359259",
+"cor-860901327"
+)
+  )
+  WHERE MEDIUM = "PAID"      
+)
+
