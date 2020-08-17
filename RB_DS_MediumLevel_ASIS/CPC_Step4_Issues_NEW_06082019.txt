@@ -15,7 +15,7 @@ FROM (
 SELECT *,
        IF((REGEXP_CONTAINS(Product,r'PL|CC') and (StatusLead = 'open' or StatusLead = 'deal') and (ApprovalLead = 'approved' or ApprovalLead = 'Approval'  or ApprovalLead = 'Approved')),'Issue',
        IF((REGEXP_CONTAINS(Product,r'PD|SA|TD') and (StatusLead = 'open' or StatusLead = 'delivered' or StatusLead = 'active')),'Issue',
-       IF((REGEXP_CONTAINS(Product,r'DC') and (StatusLead = 'delivered' or StatusLead = 'active')),'Issue',
+       IF((REGEXP_CONTAINS(Product,r'DC') and  StatusLead = 'active'),'Issue',
        IF((REGEXP_CONTAINS(Product,r'SME|Premium Product|ML') and REGEXP_CONTAINS(StatusLead,R'Open|open|deal')),'Issue',        
        IF(Product = 'Other' and (StatusLead = 'open' or StatusLead = 'deal' or StatusLead = 'delivered' or StatusLead = 'active') and 
           (ApprovalLead = 'approved' or ApprovalLead = 'Approved' or ApprovalLead = 'approval' or ApprovalLead = 'Approval') ,'Issue','not'))))) as Issue             
