@@ -1,0 +1,2 @@
+SELECT agency, STRING_AGG(email) email_list FROM `raiffeisen-owox.RB_DS_MediumLevel_ASIS.Access_list`
+GROUP BY agency
