@@ -7,14 +7,14 @@ CRM AS (
   WHERE  REGEXP_CONTAINS(TRIM(UTM_MEDIUM),r'^email$|^sms$') 
   AND DATE(LeadDate) >= '2020-01-01' 
   AND 	PRODUCT_LINE <> 'RKO'
-  AND LOWER(UTM_CONTENT) LIKE '%abandoned%'
+  --AND LOWER(UTM_CONTENT) LIKE '%abandoned%'
   ),
 Site as (
   SELECT  PARSE_DATE("%Y%m%d", Date) Date,CONCAT(clientId, visitStartTime) sessions, TRIM(`raiffeisen-owox.Common_query.replaceUnicode`(trafficSource.campaign)) campaign, TRIM(trafficSource.source) source, TRIM(trafficSource.medium) medium,  TRIM(trafficSource.adContent) adContent
   FROM `raiffeisen-owox.64807083.ga_sessions_*`
   WHERE  _TABLE_SUFFIX BETWEEN '20200101' AND FORMAT_DATE('%Y%m%d',CURRENT_DATE())
   AND REGEXP_CONTAINS(TRIM(trafficSource.medium),r'^email$|^sms$') 
-  AND LOWER(trafficSource.adContent) LIKE '%abandoned%'
+  --AND LOWER(trafficSource.adContent) LIKE '%abandoned%'
 ),
 CAMPAIGN_LIST as (
   SELECT UTM_CAMPAIGN

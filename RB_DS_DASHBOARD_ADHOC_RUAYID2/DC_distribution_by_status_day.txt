@@ -1,0 +1,43 @@
+SELECT  week_start, processing_channel, status, ntb, weeks_passed, medium,
+countif(STATUS = 'lead') lead_count,
+countif(STATUS = 'open') as open_count,
+countif(STATUS = 'delivered') as delivered_count,
+countif(STATUS = 'active') as active_count
+FROM(
+  SELECT  DATE_TRUNC(DATE(LEAD_DATE), ISOWEEK) week_start, 
+  `raiffeisen-owox.Common_query.getProcessFunnel`('',PROCESSING_CHANNEL) PROCESSING_CHANNEL,
+  ORDER_ID, LEAD_DATE,UPD_DATE, STATUS , NTB, 
+  `raiffeisen-owox.Common_query.getMediumCRM`(UTM_MEDIUM) medium,
+  DIV(DATE_DIFF(UPD_DATE, DATE(LEAD_DATE),  DAY),7) + 1 weeks_passed
+  FROM `raiffeisen-owox.CRM.orders` T, T.STATUSES 
+  WHERE DATE(_PARTITIONTIME) >= "2020-06-01" 
+    AND PRODUCT_LINE = 'Debit Cards'
+    --AND DATE_DIFF(UPD_DATE, DATE(LEAD_DATE),  DAY) >30
+  UNION ALL
+  SELECT  DATE_TRUNC(DATE(LEAD_DATE), ISOWEEK) week_start, 
+  `raiffeisen-owox.Common_query.getProcessFunnel`('',PROCESSING_CHANNEL) PROCESSING_CHANNEL,
+  ORDER_ID, LEAD_DATE,UPD_DATE,REPLACE(STATUS, 'active', 'delivered') STATUS , NTB, 
+  `raiffeisen-owox.Common_query.getMediumCRM`(UTM_MEDIUM) medium,
+  DIV(DATE_DIFF(UPD_DATE, DATE(LEAD_DATE),  DAY),7) + 1 weeks_passed
+  FROM (
+      SELECT * 
+      FROM `raiffeisen-owox.CRM.orders` 
+      WHERE TRUE
+        AND DATE(_PARTITIONTIME) >= "2020-06-01"
+        AND PRODUCT_LINE LIKE "Deb%"
+        AND EXISTS (SELECT *
+                    FROM UNNEST( STATUSES ) AS S
+                    WHERE true
+                        AND  S.STATUS = 'active'
+                    )
+        AND NOT EXISTS (
+        SELECT *
+        FROM UNNEST( STATUSES ) AS S
+        WHERE true
+          AND  S.STATUS = 'delivered'
+        ) 
+  )T, T.STATUSES S
+  WHERE S.STATUS = 'active'
+)
+GROUP BY  week_start,PROCESSING_CHANNEL,STATUS , NTB, medium, weeks_passed
+Order by  week_start, STATUS, weeks_passed, lead_count
