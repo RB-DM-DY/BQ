@@ -1,0 +1,29 @@
+WITH CRM_AFI AS (
+  SELECT * 
+  FROM (
+    SELECT LeadDate, PRODUCT_LINE, NTB, STATUS, 
+    IFNULL(APPROVAL,'') APPROVAL,
+    LOWER(TRIM(TRIM(`raiffeisen-owox.Common_query.replaceUnicode`(UTM_CAMPAIGN)),'|')) UTM_CAMPAIGN, 
+    UTM_CONTENT, 
+    TRIM(LOWER(UTM_MEDIUM)) UTM_MEDIUM,
+    TRIM(LOWER(UTM_SOURCE)) UTM_SOURCE, 
+    utm_term UTM_TERM, leadid LEAD_ID,
+    `raiffeisen-owox.Common_query.isLeadAPI`(leadid) API
+    FROM `raiffeisen-owox.Orders_CRM.CRM_orders`
+    WHERE  true
+     AND DATE(LeadDate) BETWEEN DATE_ADD(DATE_TRUNC(DATE(LeadDate), YEAR) , INTERVAL -1 YEAR) AND DATE_ADD(CURRENT_DATE() , INTERVAL -1 DAY)
+     AND LOWER(UTM_MEDIUM) = 'affiliate'
+  ) LEFT JOIN ( SELECT PRODUCT_LINE, STATUS, IFNULL(APPROVAL,'') APPROVAL, FUNNEL_STATUS FROM `raiffeisen-owox.Common_query.funnel_20201001` ) USING(PRODUCT_LINE, STATUS, APPROVAL)   
+)
+
+
+SELECT DATE(LeadDate) Date, UTM_SOURCE as Source, 
+        REPLACE(IFNULL(UTM_CAMPAIGN,"(not set)"), "(none)", "(not set)") as UTM_CAMPAIGN,
+        REPLACE(IFNULL(UTM_CONTENT,"(not set)"), "(none)", "(not set)")  as UTM_CONTENT, NTB, API,
+        CRM_AFI.PRODUCT_LINE as ProductLine,
+      count( LEAD_ID ) as Leads,
+      countif(FUNNEL_STATUS = "qlead" OR FUNNEL_STATUS = "issue" ) as QLeads,
+      countif(FUNNEL_STATUS = "issue" ) as Issues 
+FROM CRM_AFI
+group by Date, Source, UTM_CAMPAIGN, UTM_CONTENT, NTB, API, ProductLine
+ORDER BY QLeads

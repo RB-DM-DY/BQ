@@ -33,7 +33,7 @@ FROM (
         sum(Leads) as leads,
         sum(QLeads) as qleads,
         sum(Issues) as issues
-        FROM `raiffeisen-owox.RB_DS_MediumLevelAffiliate_ASIS.AFI_Leads_1` as crm
+        FROM `raiffeisen-owox.RB_DS_MediumLevelAffiliate_ASIS.AFI_Leads` as crm
         group by date,	source,	campaign,	adContent,	NTB, API, product
         )
       ) as cpl
