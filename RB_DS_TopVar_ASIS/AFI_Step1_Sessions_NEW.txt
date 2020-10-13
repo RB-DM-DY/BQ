@@ -162,20 +162,20 @@ GROUP BY date, source, medium, campaign, ConCat
 
 LEFT JOIN ( 
 
-SELECT date, sessions, adCost, source, medium, 
+SELECT date, adCost, source, medium, 
        if(REGEXP_CONTAINS(campaign,r"%2C|%2c"),REGEXP_REPLACE(campaign,r"%2C|%2c",","),campaign) AS campaign, 
        CONCAT(CAST(date AS STRING),source, medium,if(REGEXP_CONTAINS(campaign,r"%2C|%2c"),REGEXP_REPLACE(campaign,r"%2C|%2c",","),campaign)) AS ConCat       
 FROM (        
-SELECT date, sessions, adCost, source, medium, 
+SELECT date,  adCost, source, medium, 
        if(REGEXP_CONTAINS(campaign,r"%3A|%3a|%253A|%253a"),REGEXP_REPLACE(campaign,r"%3A|%3a|%253A|%253a",":"),campaign) AS campaign   
 FROM ( 
-SELECT date, sessions, adCost, source, medium,  
+SELECT date,  adCost, source, medium,  
        if(REGEXP_CONTAINS(campaign,r"%7C|%7c|%257C|%257c"),REGEXP_REPLACE(campaign,r"%7C|%7c|%257C|%257c","|"),campaign) AS campaign    
 FROM `raiffeisen-owox.OWOXBI_CostData.CostData_*` 
 WHERE
       _TABLE_SUFFIX BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'0101') AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
       AND medium = "affiliate"     
-GROUP BY date, sessions, adCost, source, medium, campaign 
+GROUP BY date, adCost, source, medium, campaign 
 ) AS t1 
 ) AS t2 
 
