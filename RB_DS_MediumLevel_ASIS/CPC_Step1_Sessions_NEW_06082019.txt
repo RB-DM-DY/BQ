@@ -23,7 +23,7 @@ SELECT *,
 FROM (
 SELECT date, IF(customDimensions.index=4,customDimensions.value,NULL) AS sessionId,
        trafficSource.source AS source, trafficSource.medium AS medium,
-       if(REGEXP_CONTAINS(trafficSource.campaign,r"%7C|%7c|%257C|%257c"),REGEXP_REPLACE(trafficSource.campaign,r"%7C|%7c|%257C|%257c","|"),trafficSource.campaign) AS campaign,
+       `raiffeisen-owox.Common_query.replaceUnicode`(trafficSource.campaign) AS campaign,
        trafficSource.keyword AS keyword
 FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h
 WHERE
@@ -56,17 +56,9 @@ FROM (
 
 SELECT date, "NULL" AS sessionId, adCost, source, medium, campaign,
        CONCAT(CAST(date AS STRING),source,medium,campaign) AS CostConCat
-FROM (       
-SELECT date, source, medium,    
-       IF(REGEXP_CONTAINS(campaign,r"%2C|%2c"),REGEXP_REPLACE(campaign,r"%2C|%2c",","),campaign) AS campaign,   
-       adCost
 FROM (
 SELECT date, source, medium,    
-       IF(REGEXP_CONTAINS(campaign,r"%3A|%3a|%253A|%253a"),REGEXP_REPLACE(campaign,r"%3A|%3a|%253A|%253a",":"),campaign) AS campaign,   
-       adCost
-FROM (
-SELECT date, source, medium,    
-       IF(REGEXP_CONTAINS(campaign,r"%7C|%7c|%257C|%257c"),REGEXP_REPLACE(campaign,r"%7C|%7c|%257C|%257c","|"),campaign) AS campaign,
+       `raiffeisen-owox.Common_query.replaceUnicode`(campaign) AS campaign,
        adCost
 FROM (
 SELECT date, source, medium, campaign, SUM(adCost) AS adCost
@@ -78,8 +70,8 @@ WHERE
 GROUP BY date, source, medium, campaign   
 ) AS t1
 ) AS t2
-) AS t3
-) AS t4
+
+
 
 UNION ALL
 
