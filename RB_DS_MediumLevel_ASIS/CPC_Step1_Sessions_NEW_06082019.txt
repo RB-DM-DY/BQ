@@ -29,6 +29,7 @@ FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS custo
 WHERE
       _TABLE_SUFFIX BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'0101') AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
       AND trafficSource.medium = "cpc"
+      AND NOT trafficSource.campaign LIKE "%pr:sme%"
 GROUP BY date, sessionId, source, medium, campaign, keyword
 ) AS t0
 WHERE sessionId IS NOT NULL
@@ -213,17 +214,7 @@ FROM (
 -----       ROW_NUMBER() OVER (PARTITION BY date, source, medium, Product, TagNTB, VB, BrandFormance, BFName) AS ROW
 --FROM (       
 SELECT date, Sessions, Cost, source, medium, campaign,
-          CASE   
-              WHEN ( REGEXP_CONTAINS(campaign,"pr:deposit") AND REGEXP_CONTAINS(campaign,"savings") ) OR REGEXP_CONTAINS(campaign,R"deposit_saving|_saving|saving|deposit_savings|_savings|savings") THEN "SA" 
-              WHEN ( REGEXP_CONTAINS(campaign,"pr:deposit") AND REGEXP_CONTAINS(campaign,"deposit") ) OR REGEXP_CONTAINS(campaign,R"deposit") THEN "TD"               
-              WHEN REGEXP_CONTAINS(campaign,"pr:cc") OR REGEXP_CONTAINS(campaign,R"_cc_|cc_|_cc110_|cc110_") THEN "CC"    
-              WHEN REGEXP_CONTAINS(campaign,"pr:dc") OR REGEXP_CONTAINS(campaign,R"_dc_|dc_|debit_card|_gold_|gold_") THEN "DC"         
-              WHEN REGEXP_CONTAINS(campaign,"pr:sme") OR REGEXP_CONTAINS(campaign,R"_RKO_|RKO_|rko_brandfrms") THEN "SME"    
-              WHEN REGEXP_CONTAINS(campaign,"pr:ml") OR REGEXP_CONTAINS(campaign,R"_ml_|ml_|refmrtgloans_|mortgage") THEN "ML / ML REF"   
-              WHEN REGEXP_CONTAINS(campaign,"pr:pl") OR REGEXP_CONTAINS(campaign,R"_pl_|pl_|_potreb_|potreb_|potreb_credit|refinans_|personal-loans|auto_credit") THEN "PL / PL REF / PL Auto" 
-              WHEN REGEXP_CONTAINS(campaign,"pr:pb") THEN "Premium Product"                
-              ELSE "Other" 
-          END AS Product, 
+          `raiffeisen-owox.Common_query.getProductCampaign`(campaign) Product, 
           TagNTB,
           CASE 
               WHEN REGEXP_CONTAINS(campaign,R".*\|vb\|.*|.*\|vb|_vb|.*vb\||vb%|7Cvb|7cvb") THEN "TRUE"
