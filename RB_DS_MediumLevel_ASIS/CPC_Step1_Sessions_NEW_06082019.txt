@@ -71,7 +71,15 @@ GROUP BY date, source, medium, campaign
 ) AS t1
 ) AS t2
 
+UNION ALL
 
+SELECT FORMAT_DATE('%Y%m%d', date) date,"NULL" AS sessionId,SUM(cost) adCost,'dzen' source,'cpc' medium, campaign,CONCAT(CAST(date AS STRING),'dzen','cpc',campaign)	CostConCat
+FROM(
+SELECT PARSE_DATE('%d.%m.%Y', SREZ_NA_DATU) date, `raiffeisen-owox.Common_query.replaceUnicode`(KAMPANIYA) campaign, CAST(REPLACE( REPLACE( RASKHOD,',','.'),' ','') AS FLOAT64) cost 
+FROM `raiffeisen-owox.RB_DS_TRANSFER_DZEN.salo_zen_campaigns_stat_*`
+WHERE _TABLE_SUFFIX BETWEEN '20201003' AND '20201108'
+)
+GROUP BY date, sessionId, source, medium, campaign,	CostConCat
 
 UNION ALL
 
@@ -85,7 +93,8 @@ SELECT date, sessionId,	SUM(adCost) AS adCost, source, medium, campaign,
 FROM (
 SELECT REPLACE(day,"-","") AS date, "NULL" AS sessionId, cost AS adCost, 
        IF(REGEXP_CONTAINS(channel,"dir"),"yandex",channel)  AS source, ---!!!change "google" on channel
-       "cpc" AS medium, campaign, EXTRACT(YEAR FROM CAST(day AS DATE)) AS YEAR
+       "cpc" AS medium, 
+        `raiffeisen-owox.Common_query.replaceUnicode`(campaign) campaign, EXTRACT(YEAR FROM CAST(day AS DATE)) AS YEAR
 FROM `raiffeisen-owox.OWOXBI_CostData.ancore_ga2_campaign` 
 WHERE REGEXP_CONTAINS(campaign,"plt:mkb|mkb") 
       OR channel="dbm"
