@@ -8,20 +8,17 @@ FROM `raiffeisen-owox.RB_DS_BrandFormance.Dictionary_BrandFormance_Dates`
 /*LEFT JOIN (SELECT GA2 FROM (SELECT campaign, cast(campaignId as STRING) as campaignId FROM `raiffeisen-owox.OWOXBI_CostData.ancore_ga2_campaign`) GA2) ON CampaignIDDV360=GA2.campaignId */
 ),
 LEADS AS ( --<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
---УНИКАЛИЗИРУЕМ ПО LEADID
+---------------------------------------------------------------------------------------------------------------------------------------
 SELECT EXTRACT(MONTH FROM Date) AS Month, EXTRACT(YEAR FROM Date) AS Year, Date, LeadID, ProductLine, Product, Source, Medium, 
-       UTM_CAMPAIGN AS Campaign, utm_term AS Keyword, NTB, VB, BrandFormance,
+       `raiffeisen-owox.Common_query.replaceUnicode`(UTM_CAMPAIGN) AS Campaign, utm_term AS Keyword, NTB, VB, BrandFormance,
        StatusLead, ApprovalLead
 FROM (
-SELECT Date, LeadID, ProductLine, Product, Source, Medium, UTM_CAMPAIGN, utm_term, NTB, VB, BrandFormance,
-       StatusLead, ApprovalLead,
-       ROW_NUMBER() OVER (PARTITION BY LeadID) AS ROW
-FROM (
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
---ОБРАБОТКА ЛИДОВ С LEADID       
+-------------------------------------------------------------------------------------------------------------------------------------   
+SELECT *
+FROM(      
 SELECT DATE(LeadDate) AS Date, leadid AS LeadID, PRODUCT_LINE AS ProductLine, 
-       `raiffeisen-owox.Common_query.getProductCRM`(PRODUCT_LINE) AS Product,      
+        TRIM(LOWER(PRODUCT_LINE)) PRODUCT_LINE, TRIM(LOWER(STATUS)) STATUS, TRIM(LOWER(IFNULL(APPROVAL,''))) APPROVAL,
+       `raiffeisen-owox.Common_query.getProductCRM`(PRODUCT_LINE) AS Product,       
        UTM_SOURCE AS Source, UTM_MEDIUM AS Medium, UTM_CAMPAIGN, utm_term,
        NTB, STATUS AS StatusLead, APPROVAL AS ApprovalLead,
        CASE 
@@ -32,46 +29,14 @@ SELECT DATE(LeadDate) AS Date, leadid AS LeadID, PRODUCT_LINE AS ProductLine,
               ELSE "FALSE"
           END AS BrandFormance       
 FROM `raiffeisen-owox.Orders_CRM.CRM_orders`
-WHERE UTM_MEDIUM ='cpc'
---      AND REGEXP_MATCH(UTM_SOURCE,R'yandex$|google$|mytarget|facebook|dbm|astraone')      
---      AND CAST(DATE(LeadDate) AS STRING) BETWEEN '2018-11-01' AND '2018-11-30'
-      AND CAST(DATE(LeadDate) AS STRING) BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'-01-01') AND CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING)
---      AND REGEXP_CONTAINS(PRODUCT_LINE,r'Personal Loans')
-      AND leadid IS NOT NULL
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-UNION ALL
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
---ОБРАБОТКА ЛИДОВ БЕЗ LEADID
-SELECT Date, CAST(LeadID AS STRING) AS LeadID, ProductLine, Product, Source, Medium, UTM_CAMPAIGN, utm_term, NTB, StatusLead, ApprovalLead, VB, BrandFormance
-FROM (       
-SELECT Date,
-       ROW_NUMBER() OVER (PARTITION BY LeadID) AS LeadID,
-       ProductLine, Product, Source, Medium, UTM_CAMPAIGN, utm_term, NTB, StatusLead, ApprovalLead, VB, BrandFormance
-FROM (       
-SELECT DATE(LeadDate) AS Date, leadid AS LeadID, PRODUCT_LINE AS ProductLine, 
-       `raiffeisen-owox.Common_query.getProductCRM`(PRODUCT_LINE) AS Product, 
-       CASE 
-           WHEN REGEXP_CONTAINS(UTM_CAMPAIGN,r'.*\|vb\|.*|.*\|vb|_vb|.*vb\||vb%|7Cvb|7cvb') THEN 'TRUE'
-       ELSE 'FALSE' END AS VB,
-          CASE 
-              WHEN REGEXP_CONTAINS(UTM_CAMPAIGN,R".*\|bf\|.*|_bf|brandfrm") THEN "TRUE"
-              ELSE "FALSE"
-          END AS BrandFormance,      
-       UTM_SOURCE AS Source, UTM_MEDIUM AS Medium, UTM_CAMPAIGN, utm_term,
-       NTB, STATUS AS StatusLead, APPROVAL AS ApprovalLead 
-FROM `raiffeisen-owox.Orders_CRM.CRM_orders`
-WHERE UTM_MEDIUM ='cpc'
---      AND REGEXP_MATCH(UTM_SOURCE,R'yandex$|google$|mytarget|facebook|dbm|astraone')      
---      AND CAST(DATE(LeadDate) AS STRING) BETWEEN '2018-11-01' AND '2018-11-30'
-      AND CAST(DATE(LeadDate) AS STRING) BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'-01-01') AND CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING)
---      AND REGEXP_CONTAINS(PRODUCT_LINE,r'Personal Loans')
-      AND leadid IS NULL
-) AS t0
-) AS t1
+WHERE TRUE
+  AND TRIM(LOWER(UTM_MEDIUM)) ='cpc'
+  AND DATE(LeadDate) BETWEEN  DATE_ADD( DATE_TRUNC( CURRENT_DATE(), YEAR), INTERVAL -1 YEAR) AND CURRENT_DATE()-1 
+)
+---------------------------------------------------------------------------------------------------------------------------------------
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 ) AS t1
-) AS t2
-WHERE ROW=1
+
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 ),
 BFLEADS AS ( --<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
