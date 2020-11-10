@@ -4,7 +4,7 @@ SELECT Date,
        SUM(QLeads) AS QLeads,
        SUM(Issues) AS Issues,
        SUM(Cost) AS Cost,
-       TagNTB AS NTB,	Product, Source, Medium, Campaign, VB, BrandFormance, BFName,	API
+       TagNTB AS NTB,	Product, REPLACE(Source,'salodzen','dzen') Source, Medium, Campaign, VB, BrandFormance, BFName,	API
 FROM (
 SELECT *
 FROM `raiffeisen-owox.RB_DS_MediumLevel_ASIS.CPC_Step1_Sessions_NEW_06082019` 
