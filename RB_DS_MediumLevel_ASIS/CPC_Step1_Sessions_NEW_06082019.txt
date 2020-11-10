@@ -77,7 +77,7 @@ SELECT FORMAT_DATE('%Y%m%d', date) date,"NULL" AS sessionId,SUM(cost) adCost,'dz
 FROM(
 SELECT PARSE_DATE('%d.%m.%Y', SREZ_NA_DATU) date, `raiffeisen-owox.Common_query.replaceUnicode`(KAMPANIYA) campaign, CAST(REPLACE( REPLACE( RASKHOD,',','.'),' ','') AS FLOAT64) cost 
 FROM `raiffeisen-owox.RB_DS_TRANSFER_DZEN.salo_zen_campaigns_stat_*`
-WHERE _TABLE_SUFFIX BETWEEN '20201003' AND '20201108'
+WHERE _TABLE_SUFFIX BETWEEN '2020-10-03' AND FORMAT_DATE('%Y%m%d',CURRENT_DATE() - 1)
 )
 GROUP BY date, sessionId, source, medium, campaign,	CostConCat
 
