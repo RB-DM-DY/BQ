@@ -62,12 +62,27 @@ SELECT date, source, medium,
        adCost
 FROM (
 SELECT date, source, medium, campaign, SUM(adCost) AS adCost
-FROM `raiffeisen-owox.OWOXBI_CostData.CostData_*`
-WHERE 
-      _TABLE_SUFFIX BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'0101') AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
-      AND medium = "cpc"   
+FROM ( SELECT * FROM `raiffeisen-owox.OWOXBI_CostData.CostData_*`
+      WHERE 
+      _TABLE_SUFFIX BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'0101') AND '20201031'
+      AND medium = "cpc" 
       AND adCost > 0
-GROUP BY date, source, medium, campaign   
+      UNION ALL
+      SELECT * FROM `raiffeisen-owox.OWOXBI_CostData.CostData_*`
+      WHERE 
+      _TABLE_SUFFIX BETWEEN '20201101' AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
+      AND medium = "cpc" 
+      AND adCost > 0
+      AND NOT source = "yandex" 
+      )
+GROUP BY date, source, medium, campaign  
+
+UNION ALL
+
+SELECT FORMAT_DATE('%Y%m%d', date) date ,'yandex' source,'cpc' medium, `raiffeisen-owox.Common_query.replaceUnicode`(CampaignName) CampaignName, SUM(Cost) Cost
+FROM `raiffeisen-owox.OWOXBI_TRANSFER_YANDEX_DIRECT.yandex_direct_AdCostData`
+WHERE Date >= '2020-11-01'
+GROUP BY date, source, medium, CampaignName
 ) AS t1
 ) AS t2
 
@@ -77,7 +92,7 @@ SELECT FORMAT_DATE('%Y%m%d', date) date,"NULL" AS sessionId,SUM(cost) adCost,'dz
 FROM(
 SELECT PARSE_DATE('%d.%m.%Y', SREZ_NA_DATU) date, `raiffeisen-owox.Common_query.replaceUnicode`(KAMPANIYA) campaign, CAST(REPLACE( REPLACE( RASKHOD,',','.'),' ','') AS FLOAT64) cost 
 FROM `raiffeisen-owox.RB_DS_TRANSFER_DZEN.salo_zen_campaigns_stat_*`
-WHERE _TABLE_SUFFIX BETWEEN '2020-10-03' AND FORMAT_DATE('%Y%m%d',CURRENT_DATE() - 1)
+WHERE _TABLE_SUFFIX BETWEEN '20201003' AND FORMAT_DATE('%Y%m%d',CURRENT_DATE() - 1)
 )
 GROUP BY date, sessionId, source, medium, campaign,	CostConCat
 
