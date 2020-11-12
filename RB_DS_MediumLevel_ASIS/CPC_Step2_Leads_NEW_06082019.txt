@@ -30,7 +30,7 @@ SELECT DATE(LeadDate) AS Date, leadid AS LeadID, PRODUCT_LINE AS ProductLine,
           END AS BrandFormance       
 FROM `raiffeisen-owox.Orders_CRM.CRM_orders`
 WHERE TRUE
-  AND TRIM(LOWER(UTM_MEDIUM)) ='cpc'
+  AND `raiffeisen-owox.Common_query.getMediumCRM`(TRIM(LOWER(UTM_MEDIUM))) = 'PAID'
   AND DATE(LeadDate) BETWEEN  DATE_ADD( DATE_TRUNC( CURRENT_DATE(), YEAR), INTERVAL -1 YEAR) AND CURRENT_DATE()-1 
 )
 ---------------------------------------------------------------------------------------------------------------------------------------

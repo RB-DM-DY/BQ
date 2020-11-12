@@ -28,7 +28,7 @@ SELECT date, IF(customDimensions.index=4,customDimensions.value,NULL) AS session
 FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h
 WHERE
       _TABLE_SUFFIX BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'0101') AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
-      AND trafficSource.medium = "cpc"
+      AND `raiffeisen-owox.Common_query.getMediumUTM`(trafficSource.medium) = "PAID"
       AND NOT trafficSource.campaign LIKE "%pr:sme%"
 GROUP BY date, sessionId, source, medium, campaign, keyword
 ) AS t0
@@ -71,7 +71,7 @@ FROM ( SELECT * FROM `raiffeisen-owox.OWOXBI_CostData.CostData_*`
       SELECT * FROM `raiffeisen-owox.OWOXBI_CostData.CostData_*`
       WHERE 
       _TABLE_SUFFIX BETWEEN '20201101' AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
-      AND medium = "cpc" 
+      AND `raiffeisen-owox.Common_query.getMediumUTM`(medium) = "PAID" 
       AND adCost > 0
       AND NOT source = "yandex" 
       )
