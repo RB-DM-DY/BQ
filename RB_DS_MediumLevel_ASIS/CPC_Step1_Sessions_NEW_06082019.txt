@@ -73,12 +73,17 @@ FROM ( SELECT * FROM `raiffeisen-owox.OWOXBI_CostData.CostData_*`
       _TABLE_SUFFIX BETWEEN '20201101' AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
       AND `raiffeisen-owox.Common_query.getMediumUTM`(medium) = "PAID" 
       AND adCost > 0
-      AND NOT source = "yandex" 
+      AND NOT (source = "yandex" OR source = "facebook")
       )
 GROUP BY date, source, medium, campaign  
 
 UNION ALL
+SELECT FORMAT_DATE('%Y%m%d', date) date ,'facebook' source,'cpc' medium, `raiffeisen-owox.Common_query.replaceUnicode`( adset.name ) CampaignName, SUM( spend ) Cost
+FROM `raiffeisen-owox.OWOXBI_TRANSFER_FACEBOOK_ADS.facebook_AdCostData`
+WHERE Date >= '2020-11-01'
+GROUP BY date, source, medium, CampaignName
 
+UNION ALL
 SELECT FORMAT_DATE('%Y%m%d', date) date ,'yandex' source,'cpc' medium, `raiffeisen-owox.Common_query.replaceUnicode`(CampaignName) CampaignName, SUM(Cost) Cost
 FROM `raiffeisen-owox.OWOXBI_TRANSFER_YANDEX_DIRECT.yandex_direct_AdCostData`
 WHERE Date >= '2020-11-01'
