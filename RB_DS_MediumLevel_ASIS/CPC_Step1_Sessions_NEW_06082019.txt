@@ -67,6 +67,7 @@ FROM ( SELECT * FROM `raiffeisen-owox.OWOXBI_CostData.CostData_*`
       _TABLE_SUFFIX BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'0101') AND '20201031'
       AND medium = "cpc" 
       AND adCost > 0
+      AND NOT campaign LIKE "%pr:sme%"
       UNION ALL
       SELECT * FROM `raiffeisen-owox.OWOXBI_CostData.CostData_*`
       WHERE 
@@ -74,6 +75,7 @@ FROM ( SELECT * FROM `raiffeisen-owox.OWOXBI_CostData.CostData_*`
       AND `raiffeisen-owox.Common_query.getMediumUTM`(medium) = "PAID" 
       AND adCost > 0
       AND NOT (source = "yandex" OR source = "facebook")
+      AND NOT campaign LIKE "%pr:sme%"
       )
 GROUP BY date, source, medium, campaign  
 
