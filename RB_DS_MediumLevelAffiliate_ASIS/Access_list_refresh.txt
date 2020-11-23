@@ -1,0 +1,2 @@
+SELECT string_field_0 source_name, STRING_AGG( string_field_1 ) email_list FROM `raiffeisen-owox.RB_DS_MediumLevelAffiliate_ASIS.Access_list`
+GROUP BY source_name
