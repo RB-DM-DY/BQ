@@ -17,13 +17,13 @@ WITH CRM_AFI AS (
 )
 
 
-SELECT DATE(LeadDate) Date, UTM_SOURCE as Source, 
+SELECT  Date, UTM_SOURCE as Source, 
         REPLACE(IFNULL(UTM_CAMPAIGN,"(not set)"), "(none)", "(not set)") as UTM_CAMPAIGN,
-        REPLACE(IFNULL(UTM_CONTENT,"(not set)"), "(none)", "(not set)")  as UTM_CONTENT, NTB, API,
-        CRM_AFI.PRODUCT_LINE as ProductLine,
+        REPLACE(IFNULL(UTM_CONTENT,"(not set)"), "(none)", "(not set)")  as UTM_CONTENT, NTB, PLATFORM,
+        PRODUCT_LINE as ProductLine,
       count( LEAD_ID ) as Leads,
       countif(FUNNEL_STATUS = "qlead" OR FUNNEL_STATUS = "issue" ) as QLeads,
       countif(FUNNEL_STATUS = "issue" ) as Issues 
-FROM CRM_AFI
-group by Date, Source, UTM_CAMPAIGN, UTM_CONTENT, NTB, API, ProductLine
+FROM `raiffeisen-owox.RB_DS_MediumLevelAffiliate_ASIS.LeadsCRM`
+group by Date, Source, UTM_CAMPAIGN, UTM_CONTENT, NTB, PLATFORM, ProductLine
 ORDER BY QLeads

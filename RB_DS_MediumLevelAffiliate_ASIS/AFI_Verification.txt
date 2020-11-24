@@ -1,15 +1,6 @@
-WITH CRM_AFI AS (
- SELECT Date, LeadID ,	Source, UTM_SOURCE,	UTM_CAMPAIGN,	UTM_CONTENT,utm_term UTM_TERM,	NTB,	API,	ProductLine, QLead , Issue , STATUS
- FROM `raiffeisen-owox.RB_DS_MediumLevelAffiliate_ASIS.LeadsCRM`
- WHERE medium = "affiliate"
- GROUP BY Date, LeadID ,	Source, UTM_SOURCE,	UTM_CAMPAIGN,	UTM_CONTENT, UTM_TERM,	NTB,	API,	ProductLine, QLead , Issue , STATUS
-)
-
-
-SELECT DISTINCT Date, UTM_CONTENT as WebmasterID, LeadID IntegrationID, ProductLine, UTM_CAMPAIGN, UTM_TERM clickID, Source, UTM_SOURCE, 	NTB,	API, QLead , Issue ,
-`raiffeisen-owox.Common_query.getProductCRM`(ProductLine) Product,
- STATUS
-FROM CRM_AFI
+SELECT DISTINCT Date, UTM_CONTENT as WebmasterID, Lead_ID IntegrationID,Product_Line ProductLine, UTM_CAMPAIGN, UTM_TERM clickID, Source, UTM_SOURCE, 	NTB,	PLATFORM , PRODUCT,
+ STATUS, FUNNEL_STATUS
+FROM `raiffeisen-owox.RB_DS_MediumLevelAffiliate_ASIS.LeadsCRM`
 WHERE Date > DATE_ADD(CURRENT_DATE, INTERVAL -4 MONTH) /*AND not UTM_CONTENT is null AND not UTM_CONTENT = "(none)"*/
 --GROUP BY Source
 

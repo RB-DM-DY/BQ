@@ -1,30 +1,53 @@
-/*  ▒██░░░░▐█▀▀─░▄█▀▄─░▐█▀█▄▒▄█▀▀█     ░▐█▀█▒▐█▀▀▄▒▐██▄▒▄██▌
-    ▒██░░░░▐█▀▀░▐█▄▄▐█░▐█▌▐█▒▀▀█▄▄     ░▐█──▒▐█▒▐█░▒█░▒█░▒█░
-    ▒██▄▄█░▐█▄▄░▐█─░▐█░▐█▄█▀▒█▄▄█▀     ░▐█▄█▒▐█▀▄▄▒▐█░░░░▒█▌*/
-
-/*Уникализированные лиды по принипу суммы символов в полях сравнения*/
-
-SELECT *
-FROM (
-  SELECT *, ROW_NUMBER()  OVER (PARTITION BY LeadID) as LeadNumber
-  FROM (
-    SELECT * 
-    FROM (
-      SELECT DATE(LeadDate) AS Date, leadid AS LeadID, PRODUCT_LINE AS ProductLine, 
-         `raiffeisen-owox.Common_query.getProductCRM`(PRODUCT_LINE) AS Product,
-         `raiffeisen-owox.Common_query.getSourceUTM`(UTM_SOURCE) AS Source, 
-         `raiffeisen-owox.Common_query.isLeadAPI`(leadid) as API,
-         `raiffeisen-owox.Common_query.isQLead`(`raiffeisen-owox.Common_query.getProductCRM`(PRODUCT_LINE),STATUS,APPROVAL) as QLead,
-         `raiffeisen-owox.Common_query.isIssue`(`raiffeisen-owox.Common_query.getProductCRM`(PRODUCT_LINE),STATUS,APPROVAL) as Issue,
-             UTM_MEDIUM AS Medium,
-             NTB, 
-             STATUS, APPROVAL, GOOGLE_ID, UTM_CAMPAIGN, UTM_CONTENT, utm_term, UTM_SOURCE, segmentIssuesLimit
-
-      FROM `raiffeisen-owox.Orders_CRM.CRM_orders` as crm
-      WHERE CAST(DATE(LeadDate) AS STRING) BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'-01-01') 
-            --AND UTM_MEDIUM = 'affiliate' 
-            AND CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING)
+WITH MOBILE_LEADS AS (
+      SELECT CONCAT(IFNULL(campaign,""),'|platform:',IFNULL(platform,""),'|af_channel:',IFNULL(af_channel,"null")) campaign,af_prt, JSON_VALUE(LOWER(event_value), '$.value') id
+      FROM (
+        SELECT
+          af_channel,af_prt,campaign,event_value, platform
+        FROM
+          `raiffeisen-owox.OWOXBI_TRANSFER_APPSFLYER.android_events`
+        WHERE TRUE
+          AND event_name = 'FORM_DC_NTB_SUBMIT_LEAD'
+          AND TRIM(LOWER(af_prt)) IN ('admitadgmbh','gradientt','2leads')
+        UNION ALL
+        SELECT
+          af_channel,af_prt,campaign,event_value,platform
+        FROM
+          `raiffeisen-owox.OWOXBI_TRANSFER_APPSFLYER.ios_events`
+        WHERE TRUE
+          AND event_name = 'FORM_DC_NTB_SUBMIT_LEAD'
+          AND TRIM(LOWER(af_prt)) IN ('admitadgmbh',
+            'gradientt',
+            '2leads')
       )
-      GROUP BY Date, LeadID, ProductLine, Product, Source, API, QLead, Issue, Medium, NTB, STATUS, APPROVAL, GOOGLE_ID, UTM_CAMPAIGN, UTM_CONTENT, utm_term, UTM_SOURCE,segmentIssuesLimit
     )
-  )  
+    
+
+SELECT DATE(LeadDate) AS DATE, leadid AS LEAD_ID, PRODUCT_LINE, 
+   `raiffeisen-owox.Common_query.getProductCRM`(PRODUCT_LINE) AS PRODUCT,
+   `raiffeisen-owox.Common_query.getSourceUTM`(UTM_SOURCE) AS SOURCE,
+        CASE
+          WHEN UTM_CAMPAIGN LIKE "%platform:api%" THEN 'api'
+          WHEN UTM_CAMPAIGN LIKE "%platform:ios%" THEN 'ios'
+          WHEN UTM_CAMPAIGN LIKE "%platform:android%" THEN 'android'
+          ELSE 'web'
+        END
+        AS  PLATFORM,
+       LOWER(UTM_MEDIUM) AS UTM_MEDIUM,
+       NTB, 
+       STATUS, APPROVAL, GOOGLE_ID,
+       `raiffeisen-owox.Common_query.replaceUnicode`(UTM_CAMPAIGN) UTM_CAMPAIGN, 
+       LOWER(UTM_CONTENT) UTM_CONTENT, LOWER(utm_term) UTM_TERM, LOWER(UTM_SOURCE) UTM_SOURCE, FUNNEL_STATUS
+FROM (
+    SELECT LeadDate, PRODUCT_LINE, NTB, GOOGLE_ID, STATUS, APPROVAL,CONCAT(TRIM(UTM_CAMPAIGN,'|'),IFNULL(IF(REGEXP_CONTAINS(LOWER(leadid),r"oapi"),'|platform:api','|platform:web'),'')) UTM_CAMPAIGN, UTM_CONTENT, UTM_MEDIUM, UTM_SOURCE, utm_term, leadid
+    FROM `raiffeisen-owox.Orders_CRM.CRM_orders` as crm
+    WHERE CAST(DATE(LeadDate) AS STRING) BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'-01-01') 
+          AND CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING)
+          AND UTM_MEDIUM = 'affiliate' 
+    UNION ALL
+    SELECT LeadDate, PRODUCT_LINE, NTB, GOOGLE_ID, STATUS, IFNULL(APPROVAL,'') APPROVAL, UTM_CAMPAIGN, UTM_CONTENT, UTM_MEDIUM, UTM_SOURCE, utm_term, leadid 
+    FROM (    
+      SELECT af_prt UTM_SOURCE, campaign UTM_CAMPAIGN, 'affiliate' UTM_MEDIUM, T.* FROM MOBILE_LEADS
+      JOIN  (SELECT * EXCEPT(UTM_CAMPAIGN,UTM_MEDIUM,UTM_SOURCE)  FROM `raiffeisen-owox.Orders_CRM.CRM_orders`) T ON id=REGEXP_EXTRACT(T.leadid, r'\d+')   
+    )
+)
+LEFT JOIN(SELECT PRODUCT_LINE, STATUS, IFNULL(APPROVAL,'') APPROVAL, FUNNEL_STATUS FROM `raiffeisen-owox.Common_query.funnel_20201001` ) USING(PRODUCT_LINE, STATUS, APPROVAL)

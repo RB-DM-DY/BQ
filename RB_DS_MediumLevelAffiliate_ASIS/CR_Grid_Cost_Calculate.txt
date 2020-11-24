@@ -22,7 +22,7 @@ Orders as (
   SELECT
   DATE(LEAD_DATE) DATE,
   `raiffeisen-owox.Common_query.getSourceUTM`(UTM_SOURCE) SOURCE,
-  `raiffeisen-owox.Common_query.isLeadAPI`(ORDER_ID) as API,
+  IF(REGEXP_CONTAINS(LOWER(ORDER_ID),r"oapi"),'api','web')  PLATFORM,
   UTM_SOURCE,
   ORDER_ID, PRODUCT_LINE, NTB, UTM_CAMPAIGN, UTM_CONTENT, STATUSES 
   FROM `raiffeisen-owox.CRM.orders` 
@@ -37,7 +37,7 @@ Price as (
 )
 
 
-SELECT DATE as date,	UTM_SOURCE as source,	UTM_CAMPAIGN as campaign,	UTM_CONTENT as adContent, NTB NTB, API API, SOURCE  as source_name, 
+SELECT DATE as date,	UTM_SOURCE as source,	UTM_CAMPAIGN as campaign,	UTM_CONTENT as adContent, NTB NTB, PLATFORM, SOURCE  as source_name, 
 `raiffeisen-owox.Common_query.getProductCRM`(PRODUCT_LINE) as Product,
   0 as sessions,
   0 as leads,
@@ -47,7 +47,7 @@ SELECT DATE as date,	UTM_SOURCE as source,	UTM_CAMPAIGN as campaign,	UTM_CONTENT
   
 FROM ( 
 
-SELECT O.DATE,	O.UTM_SOURCE,	O.UTM_CAMPAIGN,	O.UTM_CONTENT, O.NTB, O.API, O.SOURCE ,O.PRODUCT_LINE,P.CostPerOrder
+SELECT O.DATE,	O.UTM_SOURCE,	O.UTM_CAMPAIGN,	O.UTM_CONTENT, O.NTB, O.PLATFORM, O.SOURCE ,O.PRODUCT_LINE,P.CostPerOrder
 FROM(
   SELECT O,S, Z -- 
   FROM Orders O, O.STATUSES S
@@ -59,4 +59,4 @@ FROM(
    ON   P.Product = O.PRODUCT_LINE AND O.source = P.Partner AND P.Status = S.STATUS    
   
  )
-GROUP BY  date,	source,	source_name, campaign,	adContent,	NTB, API, Product
+GROUP BY  date,	source,	source_name, campaign,	adContent,	NTB, PLATFORM, Product
