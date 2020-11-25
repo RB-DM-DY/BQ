@@ -34,7 +34,7 @@ FROM (
 
 SELECT *,PRODUCT_LINE ProductLine,STATUS StatusLead,APPROVAL	ApprovalLead,
        FUNNEL_STATUS as Issue,
-       REGEXP_CONTAINS(LOWER(leadid),r"oapi"),'api','web' API          
+       REGEXP_CONTAINS(LOWER(leadid),r"oapi"),'API_LEAD','FORM_LEAD' API          
 FROM (
 
 SELECT DATE(LeadDate) AS Date, leadid AS LeadID, PRODUCT_LINE, 
