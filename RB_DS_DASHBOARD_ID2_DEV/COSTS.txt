@@ -1,0 +1,28 @@
+WITH 
+      DATES AS(-----------------------------------------
+        SELECT 
+         DATE('2020-08-01') FROM_DATE ,
+         DATE('2020-08-01') TO_DATE ,
+        ),
+      COSTS AS (----------------------------------------
+        SELECT
+            PARSE_DATE("%Y%m%d",date) date,
+            `raiffeisen-owox.Common_query.getMediumCRM`(IFNULL(medium,'')) medium, TRIM(medium) utm_medium, 
+            TRIM(source) utm_source, 
+            `raiffeisen-owox.Common_query.replaceUnicode`(campaign) utm_campaign,
+            keyword, adContent, adGroup,  adCost, impressions, adClicks, adAccount, dataSource, campaignType, campaignId, campaignName, adGroupId, adGroupName, adSource
+        FROM `raiffeisen-owox.OWOXBI_CostData.CostData_*`
+        WHERE TRUE
+        AND _TABLE_SUFFIX LIKE "20%"
+            AND PARSE_DATE("%Y%m%d",_TABLE_SUFFIX) BETWEEN (SELECT FROM_DATE FROM DATES) AND (SELECT TO_DATE FROM DATES) 
+        )
+
+SELECT 
+    medium	,utm_medium,	utm_source,	utm_campaign ,
+    SUM(impressions + 0) impressions,
+    SUM(adClicks + 0) adClicks
+FROM COSTS
+WHERE TRUE 
+    AND medium = 'PAID'
+    AND utm_campaign LIKE "%pr:dc%"
+GROUP BY medium	,utm_medium,	utm_source,	utm_campaign 

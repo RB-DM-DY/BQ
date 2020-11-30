@@ -1,0 +1,31 @@
+WITH DATES AS(-----------------------------------------
+      SELECT 
+       DATE('2020-08-01') FROM_DATE ,
+       DATE('2020-08-01') TO_DATE ,
+      ),
+      ORDERS AS (--------------------------------------------------
+      SELECT * 
+      FROM(
+        SELECT 
+          DATE(LeadDate) DATE, PRODUCT_LINE, NTB, GOOGLE_ID, 
+          `raiffeisen-owox.Common_query.replaceUnicode`(UTM_CAMPAIGN) UTM_CAMPAIGN,
+          `raiffeisen-owox.Common_query.getMediumCRM`(IFNULL(UTM_MEDIUM,'')) MEDIUM,
+          UTM_CONTENT, UTM_MEDIUM, UTM_SOURCE, utm_term, leadid , IFNULL(STATUS,'lead') STATUS, IFNULL(APPROVAL,'') APPROVAL
+        FROM `raiffeisen-owox.Orders_CRM.CRM_orders`
+        WHERE TRUE 
+              AND DATE(LeadDate) BETWEEN (SELECT FROM_DATE FROM DATES) AND (SELECT TO_DATE FROM DATES)
+      )
+      LEFT JOIN(SELECT PRODUCT_LINE, IFNULL(STATUS,'lead') STATUS, IFNULL(APPROVAL,'') APPROVAL, FUNNEL_STATUS FROM `raiffeisen-owox.Common_query.funnel_20201001` ) USING(PRODUCT_LINE, STATUS, APPROVAL)
+      )
+
+SELECT 
+    PRODUCT_LINE, UTM_CAMPAIGN, UTM_MEDIUM, UTM_SOURCE,
+    COUNT(leadid) LEADS,
+    COUNTIF(STATUS = 'open' OR FUNNEL_STATUS = 'qlead' OR FUNNEL_STATUS = 'issue') OPENS,
+    COUNTIF(FUNNEL_STATUS = 'qlead' OR FUNNEL_STATUS = 'issue') QLEADS,
+    COUNTIF(FUNNEL_STATUS = 'issue') ISSUES,
+FROM ORDERS
+WHERE TRUE 
+    AND NOT MEDIUM = "OTHER"
+    AND PRODUCT_LINE = 'Debit Cards'
+GROUP BY PRODUCT_LINE, UTM_CAMPAIGN, UTM_MEDIUM, UTM_SOURCE

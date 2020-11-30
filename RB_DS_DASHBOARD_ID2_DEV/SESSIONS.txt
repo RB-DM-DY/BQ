@@ -1,0 +1,32 @@
+WITH 
+      DATES AS(-----------------------------------------
+        SELECT 
+         DATE('2020-08-01') FROM_DATE ,
+         DATE('2020-08-01') TO_DATE ,
+        )
+SELECT 
+    `raiffeisen-owox.Common_query.getMediumUTM`(medium) utm_medium, source utm_source, 
+    `raiffeisen-owox.Common_query.replaceUnicode`(campaign) utm_campaign, COUNTIF( form_fill_start = true ) form_fill_start,
+COUNTIF( form_fill_end = true ) form_fill_end
+FROM(
+  SELECT 
+      CONCAT(fullVisitorId, CAST(visitId AS STRING)) session_id,-- eventInfo.eventLabel,
+      trafficSource.campaign, trafficSource.source, trafficSource.medium, --trafficSource.keyword, trafficSource.adContent
+      MAX(IF(REGEXP_CONTAINS(LOWER(eventInfo.eventLabel),r"changestep|content:form"),true,null)) form_fill_start,
+      MAX(IF(REGEXP_CONTAINS(LOWER(eventInfo.eventLabel),r"order:\d+"),true,null)) form_fill_end ,
+      FROM (
+        SELECT * 
+        FROM `raiffeisen-owox.64807083.ga_sessions_*`
+        WHERE _TABLE_SUFFIX BETWEEN FORMAT_DATE('%Y%m%d',(SELECT FROM_DATE FROM DATES)) AND FORMAT_DATE('%Y%m%d',(SELECT TO_DATE FROM DATES))
+      ) S, S.hits hits
+  WHERE TRUE
+     AND NOT eventInfo.eventCategory IS NULL
+     AND hits.page.hostname = "www.raiffeisen.ru"
+     AND REGEXP_CONTAINS(LOWER(hits.page.pagePath),r"dc|debit\/visa-all-at-once\/|debit\/cashback-card\/|vsesrazu") 
+     AND hits.eventInfo.eventCategory = 'send_ok' OR  LOWER(hits.eventInfo.eventCategory) LIKE "interaction%"
+     GROUP BY session_id, trafficSource.campaign, trafficSource.source, trafficSource.medium
+  HAVING NOT( form_fill_start IS NULL AND  form_fill_end IS NULL)
+  ORDER BY session_id
+)
+GROUP BY medium, source, campaign
+HAVING NOT utm_medium = 'OTHER'

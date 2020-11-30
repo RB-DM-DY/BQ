@@ -1,0 +1,25 @@
+SELECT 'PAID' utm_medium, 'yandex' utm_source,'mgcom|pr:dc' utm_campaign,'dc' product,1 impression,1 clicks,1 form_fill_start,1 form_fill_end, 4 validation,3 open,2 delivered, 1 activated
+UNION ALL
+SELECT 'AFFILIATE' utm_medium, 'lidgid' utm_source,'q12397832947' utm_campaign,'dc' product,0 impression,0 clicks,0 form_fill_start,0 form_fill_end, 4 validation,3 open,2 delivered, 1 activated
+UNION ALL
+SELECT 'ORGANIC' utm_medium, 'yandex.ru' utm_source,'not set' utm_campaign,'dc' product,0 impression,0 clicks,1 form_fill_start,1 form_fill_end, 4 validation,3 open,  2 delivered, 1 activated
+
+/*
+
+Дата (точность до месяца)	Тип источника (cpc, affileate…)	Источник	Рекламная кампания	Продукт	Показы	Клики	Начало заполнения	Конец заполнения	Валидация	Согласована встреча	Доставка	Активация (Задача пина)	Активация (расходная оперция)
+1.	Данные по органике, срс и сра за период 1-20 августа 2020 консолидированно. То есть колонку с датой и разбивкой по периоду игнорируем
+2.	В тип трафика ставим utm_medium
+3.	В Источник — utm_source
+4.	В рекламную кампанию — utm_campaign (то есть это максимальный уровень детализации данных)
+5.	В продукт мы берем только DC
+6.	В колонку Валидация кладем лиды
+7.	В колонку Доставка — delivered карты
+8.	В колонку Активация (расходная оперция) — activated карту
+9.	Колонки H, I, K, M игнорируем
+
+H – число событий, в которых человек начал заполнение заявки (если в какой-то форме нет соответствующей разметки, то можем взять отправку первого шага формы)
+I – число send_ok
+K – число open карт
+
+
+*/
