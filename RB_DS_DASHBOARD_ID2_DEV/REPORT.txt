@@ -1,10 +1,11 @@
+/*
 SELECT 'PAID' utm_medium, 'yandex' utm_source,'mgcom|pr:dc' utm_campaign,'dc' product,1 impression,1 clicks,1 form_fill_start,1 form_fill_end, 4 validation,3 open,2 delivered, 1 activated
 UNION ALL
 SELECT 'AFFILIATE' utm_medium, 'lidgid' utm_source,'q12397832947' utm_campaign,'dc' product,0 impression,0 clicks,0 form_fill_start,0 form_fill_end, 4 validation,3 open,2 delivered, 1 activated
 UNION ALL
 SELECT 'ORGANIC' utm_medium, 'yandex.ru' utm_source,'not set' utm_campaign,'dc' product,0 impression,0 clicks,1 form_fill_start,1 form_fill_end, 4 validation,3 open,  2 delivered, 1 activated
 
-/*
+
 
 Дата (точность до месяца)	Тип источника (cpc, affileate…)	Источник	Рекламная кампания	Продукт	Показы	Клики	Начало заполнения	Конец заполнения	Валидация	Согласована встреча	Доставка	Активация (Задача пина)	Активация (расходная оперция)
 1.	Данные по органике, срс и сра за период 1-20 августа 2020 консолидированно. То есть колонку с датой и разбивкой по периоду игнорируем
@@ -23,3 +24,23 @@ K – число open карт
 
 
 */
+SELECT utm_medium,'some' utm_source,'some' utm_campaign,utm_content, product,
+    SUM(impression) impressions,SUM(clicks) clicks, SUM(form_fill_start) form_fill_start, SUM(form_fill_end) form_fill_end, 
+    SUM(validation) validations,SUM( open ) opens,SUM( delivered ) delivered, SUM( activated ) activated 
+FROM(
+  --LEADS
+  SELECT medium utm_medium, utm_source, utm_campaign,utm_content, PRODUCT_LINE product,0 impression,0 clicks,0 form_fill_start,0 form_fill_end, SUM(LEADS) validation,SUM( OPENS ) open,SUM( QLEADS ) delivered, SUM( ISSUES ) activated 
+  FROM `raiffeisen-owox.RB_DS_DASHBOARD_ID2_DEV.LEADS`
+  GROUP BY utm_medium, utm_source, utm_campaign,utm_content, product
+  --SESSIONS
+  UNION ALL
+  SELECT utm_medium, utm_source, utm_campaign,utm_content, 'Debit Cards' product,0 impression,0 clicks, SUM(form_fill_start) form_fill_start, SUM(form_fill_end) form_fill_end, 0 validation,0 open,0 delivered, 0 activated 
+  FROM `raiffeisen-owox.RB_DS_DASHBOARD_ID2_DEV.SESSIONS`
+  GROUP BY utm_medium, utm_source, utm_campaign,utm_content, product
+  --COSTS
+  UNION ALL
+  SELECT medium, utm_source, utm_campaign,utm_content, 'Debit Cards' product,SUM(impressions) impression,SUM(adClicks) clicks, 0 form_fill_start, 0 form_fill_end, 0 validation,0 open,0 delivered, 0 activated 
+  FROM `raiffeisen-owox.RB_DS_DASHBOARD_ID2_DEV.COSTS`
+  GROUP BY medium, utm_source, utm_campaign,utm_content, product
+)
+GROUP BY utm_medium, utm_source, utm_campaign,utm_content, product

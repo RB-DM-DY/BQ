@@ -1,7 +1,7 @@
 WITH DATES AS(-----------------------------------------
       SELECT 
        DATE('2020-08-01') FROM_DATE ,
-       DATE('2020-08-01') TO_DATE ,
+       DATE('2020-08-20') TO_DATE ,
       ),
       ORDERS AS (--------------------------------------------------
       SELECT * 
@@ -19,7 +19,7 @@ WITH DATES AS(-----------------------------------------
       )
 
 SELECT 
-    PRODUCT_LINE, UTM_CAMPAIGN, UTM_MEDIUM, UTM_SOURCE,
+    PRODUCT_LINE, UTM_CAMPAIGN, MEDIUM, UTM_SOURCE,  UTM_CONTENT,
     COUNT(leadid) LEADS,
     COUNTIF(STATUS = 'open' OR FUNNEL_STATUS = 'qlead' OR FUNNEL_STATUS = 'issue') OPENS,
     COUNTIF(FUNNEL_STATUS = 'qlead' OR FUNNEL_STATUS = 'issue') QLEADS,
@@ -28,4 +28,4 @@ FROM ORDERS
 WHERE TRUE 
     AND NOT MEDIUM = "OTHER"
     AND PRODUCT_LINE = 'Debit Cards'
-GROUP BY PRODUCT_LINE, UTM_CAMPAIGN, UTM_MEDIUM, UTM_SOURCE
+GROUP BY PRODUCT_LINE, UTM_CAMPAIGN, MEDIUM,  UTM_CONTENT, UTM_SOURCE
