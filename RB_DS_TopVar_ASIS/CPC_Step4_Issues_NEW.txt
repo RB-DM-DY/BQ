@@ -47,7 +47,8 @@ SELECT DATE(LeadDate) AS Date, leadid AS LeadID, PRODUCT_LINE,
               ELSE "FALSE"
           END AS BrandFormance       
 FROM `raiffeisen-owox.Orders_CRM.CRM_orders`
-WHERE UTM_MEDIUM ='cpc'
+WHERE TRUE 
+      AND `raiffeisen-owox.Common_query.getMediumUTM`(UTM_MEDIUM) = "PAID"
       AND CAST(DATE(LeadDate) AS STRING) BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'-01-01') AND CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING)
 
 ) AS t1

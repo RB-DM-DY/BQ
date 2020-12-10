@@ -22,9 +22,8 @@ SELECT date, IF(customDimensions.index=4,customDimensions.value,NULL) AS session
        if(REGEXP_CONTAINS(trafficSource.campaign,r"%7C|%7c|%257C|%257c"),REGEXP_REPLACE(trafficSource.campaign,r"%7C|%7c|%257C|%257c","|"),trafficSource.campaign) AS campaign,
        trafficSource.keyword AS keyword
 FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h
-WHERE
-      _TABLE_SUFFIX BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'0101') AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
-      AND trafficSource.medium = "cpc"
+WHERE _TABLE_SUFFIX BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'0101') AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
+      AND `raiffeisen-owox.Common_query.getMediumUTM`(trafficSource.medium) = "PAID"
 GROUP BY date, sessionId, source, medium, campaign, keyword
 ) AS t0
 WHERE sessionId IS NOT NULL
@@ -68,7 +67,7 @@ SELECT date, source, medium, campaign, SUM(adCost) AS adCost
 FROM `raiffeisen-owox.OWOXBI_CostData.CostData_*`
 WHERE 
       _TABLE_SUFFIX BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'0101') AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
-      AND medium = "cpc"   
+      AND `raiffeisen-owox.Common_query.getMediumUTM`(medium) = "PAID"
       AND adCost > 0
 GROUP BY date, source, medium, campaign   
 ) AS t1
