@@ -52,28 +52,55 @@ SELECT date, "NULL" AS sessionId, adCost, source, medium, campaign,
        CONCAT(CAST(date AS STRING),source,medium,campaign) AS CostConCat
 FROM (       
 SELECT date, source, medium,    
-       IF(REGEXP_CONTAINS(campaign,r"%2C|%2c"),REGEXP_REPLACE(campaign,r"%2C|%2c",","),campaign) AS campaign,   
-       adCost
-FROM (
-SELECT date, source, medium,    
-       IF(REGEXP_CONTAINS(campaign,r"%3A|%3a|%253A|%253a"),REGEXP_REPLACE(campaign,r"%3A|%3a|%253A|%253a",":"),campaign) AS campaign,   
-       adCost
-FROM (
-SELECT date, source, medium,    
-       IF(REGEXP_CONTAINS(campaign,r"%7C|%7c|%257C|%257c"),REGEXP_REPLACE(campaign,r"%7C|%7c|%257C|%257c","|"),campaign) AS campaign,
+       `raiffeisen-owox.Common_query.replaceUnicode`(campaign) AS campaign,
        adCost
 FROM (
 SELECT date, source, medium, campaign, SUM(adCost) AS adCost
-FROM `raiffeisen-owox.OWOXBI_CostData.CostData_*`
-WHERE 
-      _TABLE_SUFFIX BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'0101') AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
+FROM ( SELECT * FROM `raiffeisen-owox.OWOXBI_CostData.CostData_*`
+      WHERE 
+      _TABLE_SUFFIX BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'0101') AND '20201031'
       AND `raiffeisen-owox.Common_query.getMediumUTM`(medium) = "PAID"
       AND adCost > 0
-GROUP BY date, source, medium, campaign   
+      AND NOT campaign LIKE "%pr:sme%"
+      UNION ALL
+      SELECT * FROM `raiffeisen-owox.OWOXBI_CostData.CostData_*`
+      WHERE 
+      _TABLE_SUFFIX BETWEEN '20201101' AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
+      AND `raiffeisen-owox.Common_query.getMediumUTM`(medium) = "PAID" 
+      AND adCost > 0
+      AND NOT (source = "yandex" OR source = "facebook")
+      AND NOT campaign LIKE "%pr:sme%"
+      )
+GROUP BY date, source, medium, campaign  
+
+UNION ALL
+SELECT FORMAT_DATE('%Y%m%d', date) date ,'facebook' source,'cpc' medium, `raiffeisen-owox.Common_query.replaceUnicode`( adset.name ) CampaignName, SUM( spend ) Cost
+FROM `raiffeisen-owox.OWOXBI_TRANSFER_FACEBOOK_ADS.facebook_AdCostData`
+WHERE Date >= '2020-11-01'
+GROUP BY date, source, medium, CampaignName
+
+UNION ALL
+SELECT FORMAT_DATE('%Y%m%d', date) date ,'yandex' source,'cpc' medium, `raiffeisen-owox.Common_query.replaceUnicode`(CampaignName) CampaignName, SUM(Cost) Cost
+FROM `raiffeisen-owox.OWOXBI_TRANSFER_YANDEX_DIRECT.yandex_direct_AdCostData`
+WHERE Date >= '2020-11-01'
+GROUP BY date, source, medium, CampaignName
+
+UNION ALL
+SELECT FORMAT_DATE('%Y%m%d', date) date ,source,medium, `raiffeisen-owox.Common_query.replaceUnicode`(campaign) CampaignName, SUM(adCost) Cost
+FROM `raiffeisen-owox.OWOXBI_TRANSFER_VK.vk_OWOXAdCostData`
+GROUP BY date, source, medium, CampaignName
 ) AS t1
-) AS t2
-) AS t3
 ) AS t4
+
+UNION ALL
+
+SELECT FORMAT_DATE('%Y%m%d', date) date,"NULL" AS sessionId,SUM(cost) adCost,'dzen' source,'cpc' medium, campaign,CONCAT(CAST(date AS STRING),'dzen','cpc',campaign)	CostConCat
+FROM(
+SELECT PARSE_DATE('%d.%m.%Y', SREZ_NA_DATU) date, `raiffeisen-owox.Common_query.replaceUnicode`(KAMPANIYA) campaign, CAST(REPLACE( REPLACE( RASKHOD,',','.'),' ','') AS FLOAT64) cost 
+FROM `raiffeisen-owox.RB_DS_TRANSFER_DZEN.salo_zen_campaigns_stat_*`
+WHERE _TABLE_SUFFIX BETWEEN '20201003' AND FORMAT_DATE('%Y%m%d',CURRENT_DATE() - 1)
+)
+GROUP BY date, sessionId, source, medium, campaign,	CostConCat
 
 UNION ALL
 ------
