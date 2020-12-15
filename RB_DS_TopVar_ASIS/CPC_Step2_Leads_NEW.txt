@@ -32,7 +32,7 @@ SELECT DATE(LeadDate) AS Date, leadid AS LeadID, PRODUCT_LINE AS ProductLine,
            WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'Standard Term Deposits') THEN 'TD'           
            WHEN REGEXP_CONTAINS(PRODUCT_LINE,r'RKO') THEN 'SME'
        ELSE 'Other' END AS Product,       
-       UTM_MEDIUM AS Medium, UTM_CAMPAIGN, utm_term,
+       `raiffeisen-owox.Common_query.getMediumCRM`(UTM_MEDIUM) AS Medium, UTM_CAMPAIGN, utm_term,
        NTB, STATUS AS StatusLead, APPROVAL AS ApprovalLead,
        CASE 
            WHEN REGEXP_CONTAINS(UTM_CAMPAIGN,R".*\|vb\|.*|.*\|vb|_vb|.*vb\||vb%|7Cvb|7cvb") THEN "TRUE"           
