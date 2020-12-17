@@ -85,11 +85,11 @@ WITH TRAFFIC AS ( --<<<<<<<<<<<<<<
     WHERE Date >= '2020-11-01'
     GROUP BY date, source, medium, CampaignName
     
-    UNION ALL
-    SELECT FORMAT_DATE('%Y%m%d', date) date ,'vk' source, 'PAID' medium, `raiffeisen-owox.Common_query.replaceUnicode`(campaign) CampaignName, SUM(adCost) Cost
-    FROM `raiffeisen-owox.OWOXBI_TRANSFER_VK.vk_OWOXAdCostData`
-    WHERE medium = 'cpc'
-    GROUP BY date, source, medium, CampaignName
+--     UNION ALL
+--     SELECT FORMAT_DATE('%Y%m%d', date) date ,'vk' source, 'PAID' medium, `raiffeisen-owox.Common_query.replaceUnicode`(campaign) CampaignName, SUM(adCost) Cost
+--     FROM `raiffeisen-owox.OWOXBI_TRANSFER_VK.vk_OWOXAdCostData`
+--     WHERE medium = 'cpc'
+--     GROUP BY date, source, medium, CampaignName
     ) AS t1
     ) AS t4
     
