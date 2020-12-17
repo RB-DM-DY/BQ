@@ -65,7 +65,7 @@ SELECT date, source, medium, campaign, SUM(adCost) AS adCost
 FROM ( SELECT * FROM `raiffeisen-owox.OWOXBI_CostData.CostData_*`
       WHERE 
       _TABLE_SUFFIX BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'0101') AND '20201031'
-      AND medium = "cpc" 
+      AND `raiffeisen-owox.Common_query.getMediumUTM`(medium) = "PAID" 
       AND adCost > 0
       AND NOT campaign LIKE "%pr:sme%"
       UNION ALL
