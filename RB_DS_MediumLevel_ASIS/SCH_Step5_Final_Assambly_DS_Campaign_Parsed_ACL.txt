@@ -5,7 +5,12 @@ FINAL_ASSEMLY AS (
   
 ),
 CAMPAIGN_PARAMETRS AS (
-  SELECT Campaign, agency,
+  SELECT Campaign, 
+  CASE
+      WHEN REGEXP_CONTAINS(agency,R'.*mgcom.*') THEN 'mgcom'
+      WHEN REGEXP_CONTAINS(agency,R'.*ohm.*') THEN 'ohm'
+      ELSE agency
+      END agency,  
   MAX(IF(key = 'pr', value, NULL)) as pr,
   MAX(IF(key = 'sp', value, NULL)) as sp,
   MAX(IF(key = 'ssp', value, NULL)) as ssp,
