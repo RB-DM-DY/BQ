@@ -1,0 +1,300 @@
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+-----------------------------------------------         BUILDING TABLES          ----------------------------------------------
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+WITH PERIOD AS (
+SELECT '20180101' AS StartDate,
+       REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","") AS FinishDate
+--       '20191007'AS FinishDate
+),
+ALL_SESSIONS AS (
+SELECT *
+FROM (
+SELECT *,
+       MIN(hitNumber) OVER (PARTITION BY sessionId, experimentId, experimentVariant, pagePath) AS MinHit
+FROM (
+SELECT *
+FROM (
+SELECT date, clientId, IF(customDimensions.index=4,customDimensions.value,NULL) AS sessionId,
+       visitStartTime, visitNumber, h.hitNumber, 
+       exp.experimentId, exp.experimentVariant,
+       trafficSource.source, trafficSource.medium, trafficSource.campaign, trafficSource.keyword,
+       CASE
+           WHEN STRPOS(h.page.pagePath,"?")>0 THEN REPLACE(SUBSTR(h.page.pagePath,0,STRPOS(h.page.pagePath,"?")-1),"//","/")
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"seg_") THEN REPLACE(SPLIT(h.page.pagePath,"seg_")[OFFSET (0)],"//","/")
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"//") THEN REPLACE(h.page.pagePath,"//","/")
+           ELSE h.page.pagePath
+       END AS pagePath
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h, UNNEST(h.experiment) AS exp, PERIOD
+WHERE
+      _TABLE_SUFFIX BETWEEN PERIOD.StartDate AND PERIOD.FinishDate
+GROUP BY date, clientId, visitStartTime, visitNumber, hitNumber, 
+         source, medium, campaign, keyword, sessionId, pagePath, experimentId, experimentVariant
+) AS t1
+WHERE sessionId IS NOT NULL AND experimentId="JpYE6SNlTy6z01CfTI21Mw"
+) AS t2
+) AS t3
+WHERE hitNumber=MinHit AND NOT REGEXP_CONTAINS(pagePath,R"/virtual/")
+),
+SESSIONID AS (
+SELECT *
+FROM (
+SELECT *,
+       MIN(hitNumber) OVER (PARTITION BY sessionId, experimentId, experimentVariant, pagePath) AS MinHit
+FROM (
+SELECT *
+FROM (
+SELECT date, clientId, IF(customDimensions.index=4,customDimensions.value,NULL) AS sessionId,
+       visitStartTime, visitNumber, h.hitNumber, 
+       exp.experimentId, exp.experimentVariant,
+       device.deviceCategory, geoNetwork.country, geoNetwork.region, geoNetwork.city,
+       trafficSource.source, trafficSource.medium, trafficSource.campaign, trafficSource.keyword,
+       CASE
+           WHEN STRPOS(h.page.pagePath,"?")>0 THEN REPLACE(SUBSTR(h.page.pagePath,0,STRPOS(h.page.pagePath,"?")-1),"//","/")
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"seg_") THEN REPLACE(SPLIT(h.page.pagePath,"seg_")[OFFSET (0)],"//","/")
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"//") THEN REPLACE(h.page.pagePath,"//","/")
+           ELSE h.page.pagePath
+       END AS pagePath
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h, UNNEST(h.experiment) AS exp, PERIOD
+WHERE
+      _TABLE_SUFFIX BETWEEN PERIOD.StartDate AND PERIOD.FinishDate
+GROUP BY date, clientId, visitStartTime, visitNumber, hitNumber,
+         source, medium, campaign, keyword, sessionId, pagePath, experimentId, experimentVariant, deviceCategory, country, region, city
+) AS t1
+WHERE sessionId IS NOT NULL AND REGEXP_CONTAINS(experimentId,R"JpYE6SNlTy6z01CfTI21Mw") --experimentId="pguiJZ-kQnSdKD3r_bJnkg"
+) AS t2
+) AS t3
+WHERE hitNumber=MinHit AND 
+      NOT REGEXP_CONTAINS(pagePath,R"/virtual/") --LEAVE FIRST HIT INTO EXPERIMENT SESSION
+),
+EVENT AS (
+SELECT *
+FROM (
+SELECT *
+FROM (
+SELECT date, clientId, IF(customDimensions.index=4,customDimensions.value,NULL) AS sessionId,
+       visitStartTime, visitNumber, h.hitNumber, 
+       exp.experimentId, exp.experimentVariant, h.eventInfo.eventCategory, h.eventInfo.eventAction, h.eventInfo.eventLabel,
+       device.deviceCategory, geoNetwork.country, geoNetwork.region, geoNetwork.city,
+       trafficSource.source, trafficSource.medium, trafficSource.campaign, trafficSource.keyword,
+       CASE
+           WHEN STRPOS(h.page.pagePath,"?")>0 THEN REPLACE(SUBSTR(h.page.pagePath,0,STRPOS(h.page.pagePath,"?")-1),"//","/")
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"seg_") THEN REPLACE(SPLIT(h.page.pagePath,"seg_")[OFFSET (0)],"//","/")
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"//") THEN REPLACE(h.page.pagePath,"//","/")
+           ELSE h.page.pagePath
+       END AS pagePath
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h, UNNEST(h.experiment) AS exp, PERIOD
+WHERE
+      _TABLE_SUFFIX BETWEEN PERIOD.StartDate AND PERIOD.FinishDate
+GROUP BY date, clientId, visitStartTime, visitNumber, hitNumber, h.eventInfo.eventCategory, h.eventInfo.eventAction, h.eventInfo.eventLabel,
+         source, medium, campaign, keyword, sessionId, pagePath, experimentId, experimentVariant, deviceCategory, country, region, city
+) AS t1
+WHERE sessionId IS NOT NULL AND REGEXP_CONTAINS(experimentId,R"JpYE6SNlTy6z01CfTI21Mw")-- AND REGEXP_CONTAINS(experimentVariant,R"1") --experimentId="pguiJZ-kQnSdKD3r_bJnkg"         
+--      AND NOT REGEXP_CONTAINS(eventCategory,R"Scroll page|CoMagicID|Клики по желтым кнопкам|Url Query\/CheckUTMinLeads|RB_DM MicroConversion|RBDS_LCI Atribute") --RB_DM Predictive Modeling|RB_DM Modal window
+--      AND REGEXP_CONTAINS(eventAction,R"Conversion readiness|1|Activation window|Click close|Back to form|undefined|CREDIT_CARD_FULL_FORM")
+      --AND REGEXP_CONTAINS(eventCategory,R"send_ok")
+      AND pagePath="/promo/110days/withdrawal/" 
+) AS t2
+--WHERE REGEXP_CONTAINS(eventAction,R"Conversion readiness|1|Activation window|Click close|Back to form|undefined|CREDIT_CARD_FULL_FORM")
+--      AND REGEXP_CONTAINS(eventLabel,R"ConversionProb|Label:changeStep|Label:visibility|_order:|ExpId")
+--ORDER BY sessionId, hitNumber       
+),
+LAST_STEP AS (
+SELECT * EXCEPT (eventCategory,eventAction,eventLabel)
+FROM (
+SELECT * EXCEPT (hitNumber,deviceCategory,country,region,city,source,medium,campaign,keyword),
+       MAX(eventAction) OVER (PARTITION BY sessionId,experimentId,experimentVariant) AS MaxStep      
+FROM (
+SELECT date, clientId, IF(customDimensions.index=4,customDimensions.value,NULL) AS sessionId,
+       visitStartTime, visitNumber, h.hitNumber, 
+       exp.experimentId, exp.experimentVariant, h.eventInfo.eventCategory, h.eventInfo.eventAction, h.eventInfo.eventLabel,
+       device.deviceCategory, geoNetwork.country, geoNetwork.region, geoNetwork.city,
+       trafficSource.source, trafficSource.medium, trafficSource.campaign, trafficSource.keyword,
+       CASE
+           WHEN STRPOS(h.page.pagePath,"?")>0 THEN REPLACE(SUBSTR(h.page.pagePath,0,STRPOS(h.page.pagePath,"?")-1),"//","/")
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"seg_") THEN REPLACE(SPLIT(h.page.pagePath,"seg_")[OFFSET (0)],"//","/")
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"//") THEN REPLACE(h.page.pagePath,"//","/")
+           ELSE h.page.pagePath
+       END AS pagePath
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h, UNNEST(h.experiment) AS exp, PERIOD
+WHERE
+      _TABLE_SUFFIX BETWEEN PERIOD.StartDate AND PERIOD.FinishDate
+GROUP BY date, clientId, visitStartTime, visitNumber, hitNumber, h.eventInfo.eventCategory, h.eventInfo.eventAction, h.eventInfo.eventLabel,
+         source, medium, campaign, keyword, sessionId, pagePath, experimentId, experimentVariant, deviceCategory, country, region, city
+) AS t1
+WHERE sessionId IS NOT NULL AND REGEXP_CONTAINS(experimentId,R"JpYE6SNlTy6z01CfTI21Mw") --AND REGEXP_CONTAINS(experimentVariant,R"1") --experimentId="pguiJZ-kQnSdKD3r_bJnkg"         
+      AND REGEXP_CONTAINS(eventCategory,R"Interaction form site") --RB_DM Predictive Modeling|RB_DM Modal window
+      AND REGEXP_CONTAINS(eventLabel,R"Label:changeStep")
+--      AND REGEXP_CONTAINS(eventAction,R"Conversion readiness|1|Activation window|Click close|Back to form|undefined|CREDIT_CARD_FULL_FORM")
+      --AND REGEXP_CONTAINS(eventCategory,R"send_ok")
+--      AND pagePath="/promo/110days/withdrawal/" 
+) AS t2
+GROUP BY date, clientId, sessionId, visitStartTime,	visitNumber, experimentId, experimentVariant, pagePath, MaxStep	
+)
+
+
+
+
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+-----------------------------------------------            START QUERY           ----------------------------------------------
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+
+SELECT date, clientId, sessionId,	visitStartTime,	visitNumber, hitNumber,
+       experimentId, experimentVariant,	deviceCategory,	country, region, city, source, medium, campaign, keyword, pagePath, Predict,
+       MaxStep,
+       SUM(LoadForm) AS LoadForm,
+       SUM(LoadVisible) AS VisibleForm,
+       SUM(ActivePopup) AS ActivePopup,
+       SUM(ClosePopup) AS ClosePopup,
+       SUM(BackPopup) AS BackPopup,
+       SUM(SendOk) AS SendOk      
+FROM (    
+-------------------------------------------------------------------------------------------------------------------------------
+-- ADD LASTSTEP IN EACH SESSION
+SELECT t15.*,
+       t16.MaxStep
+FROM (
+-------------------------------------------------------------------------------------------------------------------------------
+-- ADD SENDOK IN EACH SESSION
+SELECT t13.*,
+       IF(t14.date IS NULL,0,1) AS SendOk
+FROM (
+-------------------------------------------------------------------------------------------------------------------------------
+-- ADD BACK IN EACH SESSION
+SELECT t11.*,
+       IF(t12.date IS NULL,0,1) AS BackPopup
+FROM (
+-------------------------------------------------------------------------------------------------------------------------------
+-- ADD CLOSE IN EACH SESSION
+SELECT t9.*,
+       IF(t10.date IS NULL,0,1) AS ClosePopup
+FROM (
+-------------------------------------------------------------------------------------------------------------------------------
+-- ADD ACTIVATE IN EACH SESSION
+SELECT t7.*,
+       IF(t8.date IS NULL,0,1) AS ActivePopup
+FROM (
+-------------------------------------------------------------------------------------------------------------------------------
+-- ADD FORMVISIBILITY IN EACH SESSION
+SELECT t5.*,
+       IF(t6.date IS NULL,0,1) AS LoadVisible
+FROM ( 
+-------------------------------------------------------------------------------------------------------------------------------
+-- ADD FORMLOAD IN EACH SESSION
+SELECT t3.*,
+       IF(t4.date IS NULL,0,1) AS LoadForm
+FROM (       
+-------------------------------------------------------------------------------------------------------------------------------
+-- ADD PREDICT IN EACH SESSION
+SELECT t1.*,
+       t2.Predict
+FROM (       
+SELECT *
+FROM SESSIONID
+WHERE REGEXP_CONTAINS(pagePath,R"/promo/110days/withdrawal/")
+) AS t1
+LEFT JOIN (
+SELECT date, clientId, sessionId, visitStartTime, visitNumber, hitNumber, experimentId, experimentVariant,
+       SPLIT(SPLIT(eventLabel,"|")[OFFSET (0)],":")[OFFSET (1)] AS Predict,
+       pagePath
+FROM EVENT
+WHERE REGEXP_CONTAINS(eventCategory,"RB_DM Predictive Modeling")
+GROUP BY date, clientId, sessionId, visitStartTime, visitNumber, hitNumber, experimentId, experimentVariant, Predict, pagePath  
+) AS t2
+ON t1.date=t2.date AND
+   t1.sessionId=t2.sessionId AND
+   t1.experimentId=t2.experimentId AND
+   t1.experimentVariant=t2.experimentVariant AND
+   t1.pagePath=t2.pagePath
+-------------------------------------------------------------------------------------------------------------------------------
+) AS t3
+LEFT JOIN (
+SELECT date, clientId, sessionId, visitStartTime, visitNumber, hitNumber, experimentId, experimentVariant, eventCategory,	eventAction, eventLabel, pagePath
+FROM EVENT
+WHERE REGEXP_CONTAINS(eventAction,"1") AND REGEXP_CONTAINS(eventLabel,r"Label:changeStep")
+GROUP BY date, clientId, sessionId, visitStartTime, visitNumber, hitNumber, experimentId, experimentVariant, eventCategory,	eventAction, eventLabel, pagePath
+) AS t4
+ON t4.date=t3.date AND
+   t4.sessionId=t3.sessionId AND
+   t4.experimentId=t3.experimentId AND
+   t4.experimentVariant=t3.experimentVariant AND
+   t4.pagePath=t3.pagePath
+-------------------------------------------------------------------------------------------------------------------------------
+) AS t5
+LEFT JOIN (
+SELECT date, clientId, sessionId, visitStartTime, visitNumber, hitNumber, experimentId, experimentVariant, eventCategory,	eventAction, eventLabel, pagePath
+FROM EVENT
+WHERE REGEXP_CONTAINS(eventLabel,r"Label:visibility")
+GROUP BY date, clientId, sessionId, visitStartTime, visitNumber, hitNumber, experimentId, experimentVariant, eventCategory,	eventAction, eventLabel, pagePath
+) AS t6
+ON t5.date=t6.date AND
+   t5.sessionId=t6.sessionId AND
+   t5.experimentId=t6.experimentId AND
+   t5.experimentVariant=t6.experimentVariant AND
+   t5.pagePath=t6.pagePath
+-------------------------------------------------------------------------------------------------------------------------------
+) AS t7
+LEFT JOIN (
+SELECT date, clientId, sessionId, visitStartTime, visitNumber, hitNumber, experimentId, experimentVariant, eventCategory,	eventAction, eventLabel, pagePath
+FROM EVENT
+WHERE REGEXP_CONTAINS(eventAction,r"Activation window")
+GROUP BY date, clientId, sessionId, visitStartTime, visitNumber, hitNumber, experimentId, experimentVariant, eventCategory,	eventAction, eventLabel, pagePath
+) AS t8
+ON t7.date=t8.date AND
+   t7.sessionId=t8.sessionId AND
+   t7.experimentId=t8.experimentId AND
+   t7.experimentVariant=t8.experimentVariant AND
+   t7.pagePath=t8.pagePath
+-------------------------------------------------------------------------------------------------------------------------------
+) AS t9
+LEFT JOIN (
+SELECT date, clientId, sessionId, visitStartTime, visitNumber, hitNumber, experimentId, experimentVariant, eventCategory,	eventAction, eventLabel, pagePath
+FROM EVENT
+WHERE REGEXP_CONTAINS(eventAction,r"Click close")
+GROUP BY date, clientId, sessionId, visitStartTime, visitNumber, hitNumber, experimentId, experimentVariant, eventCategory,	eventAction, eventLabel, pagePath
+) AS t10
+ON t9.date=t10.date AND
+   t9.sessionId=t10.sessionId AND
+   t9.experimentId=t10.experimentId AND
+   t9.experimentVariant=t10.experimentVariant AND
+   t9.pagePath=t10.pagePath
+-------------------------------------------------------------------------------------------------------------------------------
+) AS t11
+LEFT JOIN (
+SELECT date, clientId, sessionId, visitStartTime, visitNumber, hitNumber, experimentId, experimentVariant, eventCategory,	eventAction, eventLabel, pagePath
+FROM EVENT
+WHERE REGEXP_CONTAINS(eventAction,r"Click back to form")
+GROUP BY date, clientId, sessionId, visitStartTime, visitNumber, hitNumber, experimentId, experimentVariant, eventCategory,	eventAction, eventLabel, pagePath
+) AS t12
+ON t11.date=t12.date AND
+   t11.sessionId=t12.sessionId AND
+   t11.experimentId=t12.experimentId AND
+   t11.experimentVariant=t12.experimentVariant AND
+   t11.pagePath=t12.pagePath
+-------------------------------------------------------------------------------------------------------------------------------
+) AS t13
+LEFT JOIN (
+SELECT date, clientId, sessionId, visitStartTime, visitNumber, hitNumber, experimentId, experimentVariant, eventCategory,	eventAction, eventLabel, pagePath
+FROM EVENT
+WHERE REGEXP_CONTAINS(eventCategory,r"send_ok")
+GROUP BY date, clientId, sessionId, visitStartTime, visitNumber, hitNumber, experimentId, experimentVariant, eventCategory,	eventAction, eventLabel, pagePath
+) AS t14
+ON t13.date=t14.date AND
+   t13.sessionId=t14.sessionId AND
+   t13.experimentId=t14.experimentId AND
+   t13.experimentVariant=t14.experimentVariant AND
+   t13.pagePath=t14.pagePath
+-------------------------------------------------------------------------------------------------------------------------------
+) AS t15
+LEFT JOIN (
+SELECT date, clientId, sessionId, experimentId, experimentVariant, MaxStep, pagePath
+FROM LAST_STEP
+) AS t16
+ON t15.date=t16.date AND
+   t15.sessionId=t16.sessionId AND
+   t15.experimentId=t16.experimentId AND
+   t15.experimentVariant=t16.experimentVariant AND
+   t15.pagePath=t16.pagePath
+-------------------------------------------------------------------------------------------------------------------------------
+) AS t17
+GROUP BY date, clientId, sessionId,	visitStartTime,	visitNumber, hitNumber,
+         experimentId, experimentVariant,	deviceCategory,	country, region, city, source, medium, campaign, keyword, pagePath, Predict, MaxStep

@@ -1,0 +1,26 @@
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+-----------------------------------------------         BUILDING TABLES          ----------------------------------------------
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+
+
+
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+-----------------------------------------------            START QUERY           ----------------------------------------------
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+
+
+SELECT *,
+       NULL AS totalSESSIONS, NULL AS totalSTEP1_COMPLETE, NULL AS totalLEADS, NULL AS totalQLEADS, NULL AS totalISSUES,
+--       NULL AS totalLEADS, NULL AS totalSESSIONS,
+       NULL AS CR, NULL AS Mean, NULL AS STDDev, NULL AS countROW, NULL AS numberROW, NULL AS minCountROW, 
+       NULL AS minAVGCR, NULL AS maxAVGCR, NULL AS diffAVGCR, NULL AS X, NULL AS NORMDISP_FREQ, NULL AS	NORMDISP_INTEGRAL, NULL AS NORMDISP_CALC,
+       NULL AS	Mean0, NULL AS STDDev0, NULL AS totalSESSIONS0, NULL AS NORMDISP_INTEGRAL0, NULL AS Z_TEST, NULL AS P_VALUE, NULL AS MeanCRITICAL, 
+       NULL AS EXCLUD
+FROM `raiffeisen-owox.RB_DS_DASHBOARD_ABtesting.ABtesting_dashboard_Work_BASIC`  
+UNION ALL
+SELECT date, clientId, sessionId,	visitStartTime,	visitNumber, hitNumber,	experimentId,	experimentVariant, deviceCategory, NULL AS operatingSystem, country,	region,	city,	
+       source, medium, campaign, keyword,	pagePath,	Ldate, LclientId,	LsessionId,	LeventAction,	LProductGoals, LorderID, LpagePath,	EXPpagePath, EXPproductGoals,	expPage,
+       RangeCountSessions, Sessions, Step1_Complete, Leads, QLeads, Issues,	StartDate, ControlDate,	DuringDay, DuringWeek, First3Days, EXPERIMENT_NAME,	WHAT_TESTING,	HYPOTHESIS,
+       totalSESSIONS, totalSTEP1_COMPLETE, totalLEADS, totalQLEADS, totalISSUES,	CR,	Mean,	STDDev,	countROW,	numberROW, minCountROW,	minAVGCR,	maxAVGCR,	diffAVGCR, X,	NORMDISP_FREQ, NORMDISP_INTEGRAL,	NORMDISP_CALC, Mean0,	STDDev0, 
+       totalSESSIONS0, NORMDISP_INTEGRAL0, Z_TEST, P_VALUE,	MeanCRITICAL,	EXCLUD
+FROM `raiffeisen-owox.RB_DS_DASHBOARD_ABtesting.ABtesting_dashboard_Work_NORMDISP`

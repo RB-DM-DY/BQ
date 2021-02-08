@@ -1,0 +1,190 @@
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+-----------------------------------------------         BUILDING TABLES          ----------------------------------------------
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+
+WITH BASIC AS ( 
+SELECT *
+FROM `raiffeisen-owox.RB_DS_DASHBOARD_ABtesting.ABtesting_dashboard_Work_BASIC`  
+WHERE expPage="expPage=yes"-- AND experimentId="yMQlVH4ATwGcKQEk4UbB2g"
+),
+SCALE AS ( 
+SELECT  ([
+    STRUCT(0.0001 as CR_BASELINE, 139.00 as TEST_CR_MUST_BETTER),
+    STRUCT(0.014 as CR_BASELINE, 1.00 as TEST_CR_MUST_BETTER),
+    STRUCT(0.028 as CR_BASELINE, 0.50 as TEST_CR_MUST_BETTER),
+    STRUCT(0.042 as CR_BASELINE, 0.33 as TEST_CR_MUST_BETTER),
+    STRUCT(0.056 as CR_BASELINE, 0.25 as TEST_CR_MUST_BETTER),
+    STRUCT(0.07 as CR_BASELINE, 0.20 as TEST_CR_MUST_BETTER),
+    STRUCT(0.084 as CR_BASELINE, 0.17 as TEST_CR_MUST_BETTER),
+    STRUCT(0.098 as CR_BASELINE, 0.14 as TEST_CR_MUST_BETTER),    
+    STRUCT(0.112 as CR_BASELINE, 0.13 as TEST_CR_MUST_BETTER),    
+    STRUCT(0.126 as CR_BASELINE, 0.11 as TEST_CR_MUST_BETTER),    
+    STRUCT(0.14 as CR_BASELINE, 0.10 as TEST_CR_MUST_BETTER),
+    STRUCT(0.154 as CR_BASELINE, 0.09 as TEST_CR_MUST_BETTER),    
+    STRUCT(0.168 as CR_BASELINE, 0.08 as TEST_CR_MUST_BETTER),
+    STRUCT(0.196 as CR_BASELINE, 0.07 as TEST_CR_MUST_BETTER),
+    STRUCT(0.224 as CR_BASELINE, 0.06 as TEST_CR_MUST_BETTER),   
+    STRUCT(0.224 as CR_BASELINE, 0.05 as TEST_CR_MUST_BETTER), 
+    STRUCT(0.224 as CR_BASELINE, 0.04 as TEST_CR_MUST_BETTER),     
+    STRUCT(0.224 as CR_BASELINE, 0.03 as TEST_CR_MUST_BETTER),     
+    STRUCT(0.224 as CR_BASELINE, 0.02 as TEST_CR_MUST_BETTER)     
+    ])
+    AS participants
+),
+NORMDIST AS (
+--------------------------------------------------------------------------------------------------------------------------------
+--NORMAL DISTRIBUTION
+SELECT * EXCEPT (Iprev),
+       (NORMDISP_INTEGRAL-Iprev) AS NORMDISP_CALC
+FROM (       
+SELECT *,
+       LAG(NORMDISP_INTEGRAL) OVER (PARTITION BY experimentId, experimentVariant ORDER BY numberROW) AS Iprev
+FROM (
+SELECT * EXCEPT(p1, p2,	Xprev, p2prev, pCalc, PreRes),
+       p1*PreRes AS NORMDISP_INTEGRAL
+FROM (
+SELECT *,
+       SUM(pCalc) OVER (PARTITION BY experimentId, experimentVariant ORDER BY numberROW, pCalc) AS PreRes
+FROM (
+SELECT *,
+       IF(numberROW=1,0,(X-Xprev)*p2prev+(X-Xprev)*(p2-p2prev)/2) AS pCalc
+FROM (
+SELECT date, clientId, sessionId, visitStartTime, visitNumber, hitNumber, experimentId, experimentVariant,
+       deviceCategory, country, region, city, source, medium, campaign, keyword, pagePath, 
+       Ldate, LclientId, LsessionId, LeventAction, LProductGoals, LorderID, LpagePath, 
+       EXPpagePath,	EXPproductGoals, expPage, RangeCountSessions, 
+       Sessions, Step1_Complete, Leads, QLeads, Issues,
+       StartDate,	ControlDate, DuringDay, DuringWeek, First3Days,
+       EXPERIMENT_NAME,	WHAT_TESTING,	HYPOTHESIS,	totalSESSIONS, totalSTEP1_COMPLETE, totalLEADS, totalQLEADS, totalISSUES,
+       CR, Mean, STDDev, countROW, numberROW, minCountROW, minAVGCR, maxAVGCR, diffAVGCR, ROUND(X,4) AS X, NORMDISP_FREQ,
+       p1, p2,
+       LAG(X) OVER (PARTITION BY experimentId, experimentVariant ORDER BY numberROW) AS Xprev,
+       LAG(p2) OVER (PARTITION BY experimentId, experimentVariant ORDER BY numberROW) AS p2prev       
+FROM (
+SELECT *,
+       IF(X IS NULL,NULL,(1/(IF(STDDev=0,0.000001,STDDev)*SQRT(2*3.1416)))*POWER(2.71828,-(POWER(X-Mean,2)/(2*POWER(IF(STDDev=0,0.000001,STDDev),2))))) AS NORMDISP_FREQ, --<-- FREQUENCE
+       1/(IF(STDDev=0,0.000001,STDDev)*SQRT(2*3.1416)) AS p1,
+       IF(X IS NULL,NULL,POWER(2.71828,-(POWER(X-Mean,2)/(2*POWER(IF(STDDev=0,0.000001,STDDev),2))))) AS p2       
+       
+FROM (
+SELECT *,
+       IF(numberROW<=minCountROW,minAVGCR+(diffAVGCR/minCountROW)*numberROW,NULL) AS X,
+FROM (       
+SELECT * EXCEPT(minAVGCR,	maxAVGCR,	maxSTDDev),
+       MIN(countROW) OVER (PARTITION BY experimentId) AS minCountROW,
+       minAVGCR-maxSTDDev*5 AS minAVGCR, --<-- 5 РАЗМЫВАЕМ СИГМУ
+       maxAVGCR+maxSTDDev*5 AS maxAVGCR, --<-- 5 РАЗМЫВАЕМ СИГМУ 
+       (maxAVGCR+maxSTDDev*5)-(minAVGCR-maxSTDDev*5) AS diffAVGCR --<-- 5 РАЗМЫВАЕМ СИГМУ
+FROM (       
+SELECT *, 
+       COUNT(experimentId) OVER (PARTITION BY experimentId,experimentVariant) AS countROW,
+       ROW_NUMBER() OVER (PARTITION BY experimentId,experimentVariant) AS numberROW,
+       MIN(Mean) OVER (PARTITION BY experimentId) AS minAVGCR,
+       MAX(Mean) OVER (PARTITION BY experimentId) AS maxAVGCR,
+       MAX(STDDev) OVER (PARTITION BY experimentId) AS maxSTDDev
+FROM (
+SELECT * EXCEPT(rowNUMBER),--EXCEPT(totalLEADS, totalSESSIONS, rowNUMBER),
+       SQRT(totalLEADS/totalSESSIONS/totalSESSIONS) AS STDDev
+FROM (
+SELECT *, 
+       AVG(totalLEADS/totalSESSIONS) OVER (PARTITION BY experimentId, experimentVariant) AS Mean
+FROM (
+SELECT *, Leads/Sessions AS CR,
+       SUM(Sessions)  OVER (PARTITION BY experimentId, experimentVariant) AS totalSESSIONS,
+       SUM(Step1_Complete)  OVER (PARTITION BY experimentId, experimentVariant) AS totalSTEP1_COMPLETE,
+       SUM(Leads) OVER (PARTITION BY experimentId, experimentVariant) AS totalLEADS,
+       SUM(QLeads) OVER (PARTITION BY experimentId, experimentVariant) AS totalQLEADS,
+       SUM(Issues) OVER (PARTITION BY experimentId, experimentVariant) AS totalISSUES,       
+       ROW_NUMBER() OVER (PARTITION BY experimentId, experimentVariant) AS rowNUMBER       
+FROM (       
+--------------------------------------------------------------------------------------------------------------------------------
+SELECT * 
+FROM BASIC
+-------------------------------------------------------------------------------------------------------------------------------- 
+) AS t1
+) AS t2
+WHERE rowNUMBER<=100
+) AS t3
+) AS t4
+) AS t5
+) AS t6
+) AS t7
+) AS t8
+) AS t9
+) AS t10
+) AS t11
+) AS t12
+) AS t13
+--------------------------------------------------------------------------------------------------------------------------------   
+--WHERE STDDev <=0
+)
+
+
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+-----------------------------------------------            START QUERY           ----------------------------------------------
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+
+
+------------------------------------------------------------------------------------------------------------------------------
+--P_VALUE
+--SELECT *,
+--       (1/SQRT(2*3.1416))*POWER(2.71828,-(POWER(P_VALUE_STEP,2)/2)) AS P_VALUE_STEP_FUNC
+--FROM (
+SELECT *,
+       IF(experimentVariant="0",NULL,((1/SQRT(2*3.1416))*POWER(2.71828,-(POWER(Z_TEST,2)/2)))/2-0.005) AS P_VALUE,
+       IF(experimentVariant>"0",1.96*SQRT(POWER(STDDev,2)+POWER(STDDev0,2))+Mean0,NULL) AS MeanCRITICAL,
+       "EXCLUDE" AS EXCLUD
+FROM (
+------------------------------------------------------------------------------------------------------------------------------
+--Z_SCORE
+SELECT t4.*,
+       t5.NORMDISP_INTEGRAL AS NORMDISP_INTEGRAL0,
+       CASE 
+           WHEN (t4.Mean-t4.Mean0)=0 AND SQRT(POWER(t4.STDDev,2) + POWER(t4.STDDev0,2))=0 THEN 0
+           ELSE (t4.Mean-t4.Mean0)/SQRT(POWER(t4.STDDev,2) + POWER(t4.STDDev0,2)) 
+       END AS Z_TEST
+--       IF((t4.Mean-t4.Mean0)/SQRT(POWER(t4.STDDev,2)/t4.totalSESSIONS + POWER(t4.STDDev0,2)/t4.totalSESSIONS0)<0,
+--           -(t4.Mean-t4.Mean0)/SQRT(POWER(t4.STDDev,2)/t4.totalSESSIONS + POWER(t4.STDDev0,2)/t4.totalSESSIONS0),
+--            (t4.Mean-t4.Mean0)/SQRT(POWER(t4.STDDev,2)/t4.totalSESSIONS + POWER(t4.STDDev0,2)/t4.totalSESSIONS0)) AS Z_TEST
+FROM (
+SELECT *
+FROM (
+SELECT t1.*,
+       t2.Mean AS Mean0,
+       t2.STDDev AS STDDev0,
+       t2.totalSESSIONS AS totalSESSIONS0       
+FROM (       
+SELECT *
+FROM NORMDIST
+) AS t1
+LEFT JOIN (
+------------------------------------------------------------------------------------------------------------------------------
+--ONLY BASELINE VARIANT
+SELECT *
+FROM NORMDIST
+WHERE experimentVariant="0"
+------------------------------------------------------------------------------------------------------------------------------
+) AS t2
+ON t1.experimentId=t2.experimentId
+) AS t3
+GROUP BY date, clientId, sessionId, visitStartTime,	visitNumber, hitNumber, experimentId, experimentVariant, 
+         deviceCategory, country,	region,	city,	source,	medium,	campaign,	keyword, pagePath,
+         Ldate,	LclientId, LsessionId, LeventAction, LProductGoals, LorderID, LpagePath, EXPpagePath, EXPproductGoals, expPage,
+         RangeCountSessions, Sessions, Step1_Complete, Leads, QLeads, Issues,	StartDate, ControlDate, DuringDay, DuringWeek, First3Days, EXPERIMENT_NAME, WHAT_TESTING, HYPOTHESIS, 
+         totalSESSIONS, totalSTEP1_COMPLETE, totalLEADS, totalQLEADS, totalISSUES,
+         CR, Mean, STDDev, countROW, numberROW, minCountROW, minAVGCR, maxAVGCR, diffAVGCR, X, NORMDISP_FREQ,	NORMDISP_INTEGRAL, NORMDISP_CALC, Mean0, STDDev0, totalSESSIONS0
+) AS t4
+LEFT JOIN (
+------------------------------------------------------------------------------------------------------------------------------
+--ONLY BASELINE VARIANT
+SELECT *
+FROM NORMDIST
+WHERE experimentVariant="0"
+------------------------------------------------------------------------------------------------------------------------------
+) AS t5
+ON t4.experimentId=t5.experimentId AND
+   t4.numberROW=t5.numberROW
+------------------------------------------------------------------------------------------------------------------------------   
+) AS t6
+--) AS t7
+------------------------------------------------------------------------------------------------------------------------------

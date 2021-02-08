@@ -1,0 +1,111 @@
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+-----------------------------------------------         BUILDING TABLES          ----------------------------------------------
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+
+WITH DATE_PERIOD AS (
+SELECT "20191001" AS StartDate,
+       --CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),"0101") AS StartDate,
+       REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","") AS EndDate
+),
+GOALS_EVENT AS (
+SELECT CONCAT(SME,"|",PL,"|",DC,"|",SA_TD,"|",CC,"|",ML,"|",PB) AS REG_GOALS
+FROM (
+SELECT "(^rko|^metro|^24-7)|SMEReg_Success|promo-sme-partner|^LENDING_MICRO_NON_LOAN_REQUEST$" AS SME,
+       "CONSUMER_LOAN_FULL_FORM" AS PL,
+       "DEBIT_CARD_FULL_FORM" AS DC,
+       "CASH_DEPOSIT_SHORT|SAVING_ACCOUNT_SHORT|SAVINGS_ACCOUNT_REQUEST|CASH_DEPOSIT_REQUEST" AS SA_TD,
+       "CREDIT_CARD_FULL_FORM" AS CC,
+       "MORTGAGE_CONSULTATION(_CALL|_REQUEST)|MORTGAGE_CONSULTATION" AS ML,
+       "PREMIUM(_BANKING_|_DIRECT_)FORM_REQUEST" AS PB
+) AS t1       
+),
+SESSIONS AS (
+SELECT *
+FROM (
+SELECT date,
+       REPLACE(SPLIT(SPLIT(pagePath,"#")[OFFSET (0)],"seg_")[OFFSET (0)],"//","/") AS pagePath,
+       CASE 
+           WHEN REGEXP_CONTAINS(pagePath,R"^\/promo\/pl\/.*") THEN "PL"
+           WHEN REGEXP_CONTAINS(pagePath,R"^\/promo(\/ipoteka\/|\/mortgage\/).*|^\/promo(\/main\/|\/refin\/|\/special\/).*") THEN "ML"           
+           WHEN REGEXP_CONTAINS(pagePath,R"^\/promo\/110days\/.*|^\/promo\/vsesrazu-cc\/.*|\/promo\/vses\/.*|\/promo\/vsesraz\/.*") THEN "CC"  
+           WHEN REGEXP_CONTAINS(pagePath,R"^\/promo\/simple\/.*|\/promo\/vsesrazu-dc\/|\/promo\/vsesrazu-dc30813530510\/.*|\/promo\/buyandfly\/.*") THEN "DC"
+           WHEN REGEXP_CONTAINS(pagePath,R"^\/promo\/premium.*") THEN "PREMIUM" 
+           WHEN REGEXP_CONTAINS(pagePath,R"^\/promo(\/rko\/|\/sme\/).*") THEN "SME"            
+           WHEN REGEXP_CONTAINS(pagePath,R"^\/promo\/savings\/.*") THEN "SA"
+           WHEN REGEXP_CONTAINS(pagePath,R"^\/promo\/deposit\/.*") THEN "TD"           
+           ELSE "UNKNOWN"
+       END AS ProductGroup,       
+       sessionId, 
+       CASE 
+            WHEN visitNumber=1 THEN "1"
+            ELSE "more 1"
+       END AS visitNumber,  
+       source, medium, 
+       CASE 
+            WHEN REGEXP_CONTAINS(keyword,R"^cid-") THEN REPLACE(LPAD(keyword,STRPOS(keyword,",")),",","")
+            ELSE "Clear"
+       END AS campaignID,
+       deviceCategory
+FROM (
+SELECT date, SPLIT(h.page.pagePath,"?")[OFFSET (0)] AS pagePath, IF(customDimensions.index=4,customDimensions.value,NULL) AS sessionId,
+       visitNumber, trafficSource.source, trafficSource.medium, trafficSource.keyword, device.deviceCategory 
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, DATE_PERIOD, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h
+WHERE
+      _TABLE_SUFFIX BETWEEN DATE_PERIOD.StartDate AND DATE_PERIOD.EndDate
+     AND REGEXP_CONTAINS(trafficSource.medium,R"cpc") 
+     AND REGEXP_CONTAINS(h.page.hostname,R"www\.raiffeisen\.ru|ipoteka\.raiffeisen\.ru") 
+     AND REGEXP_CONTAINS(h.page.pagePath,R"\/promo\/")
+) AS t1
+WHERE sessionId IS NOT NULL AND pagePath="/promo/vsesrazu-dc/apply/" --pagePath="/promo/110days/withdrawal/"
+GROUP BY date, pagePath, ProductGroup, sessionId, visitNumber, source, medium, keyword, deviceCategory
+) AS t2
+WHERE (REGEXP_CONTAINS(campaignID,r"cid-") AND NOT REGEXP_CONTAINS(campaignID,r"\{") AND campaignID IS NOT NULL)
+),
+GOALS AS (
+SELECT date, REPLACE(SPLIT(SPLIT(pagePath,"#")[OFFSET (0)],"seg_")[OFFSET (0)],"//","/") AS pagePath,
+       sessionId, eventCategory, eventAction,	eventLabel
+FROM (
+SELECT date, SPLIT(h.page.pagePath,"?")[OFFSET (0)] AS pagePath, IF(customDimensions.index=4,customDimensions.value,NULL) AS sessionId,
+       h.eventInfo.eventCategory, h.eventInfo.eventAction, h.eventInfo.eventLabel
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, DATE_PERIOD, GOALS_EVENT, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h
+WHERE
+      _TABLE_SUFFIX BETWEEN DATE_PERIOD.StartDate AND DATE_PERIOD.EndDate
+     AND REGEXP_CONTAINS(trafficSource.medium,R"cpc") 
+     AND REGEXP_CONTAINS(h.page.hostname,R"www\.raiffeisen\.ru|ipoteka\.raiffeisen\.ru") 
+     AND REGEXP_CONTAINS(h.page.pagePath,R"\/promo\/")
+     AND h.eventInfo.eventCategory="send_ok"
+     AND REGEXP_CONTAINS(h.eventInfo.eventAction,GOALS_EVENT.REG_GOALS)
+) AS t1     
+WHERE sessionId IS NOT NULL AND pagePath="/promo/vsesrazu-dc/apply/" --pagePath="/promo/110days/withdrawal/" 
+GROUP BY date, pagePath, sessionId, eventCategory, eventAction, eventLabel
+)
+
+
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+-----------------------------------------------            START QUERY           ----------------------------------------------
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+
+SELECT date, pagePath, ProductGroup, visitNumber, source, medium, campaignID, deviceCategory,
+       SUM(Sessions) AS Sessions,
+       SUM(Leads) AS Leads
+FROM (
+
+
+
+SELECT t1.*,
+       1 AS Sessions,
+       IF(t2.eventLabel IS NULL,0,1) AS Leads
+FROM (       
+SELECT *
+FROM SESSIONS
+) AS t1
+LEFT JOIN (
+SELECT *
+FROM GOALS
+) AS t2
+ON t1.sessionId=t2.sessionId AND t1.pagePath=t2.pagePath
+
+
+
+) AS t3
+GROUP BY date, pagePath, ProductGroup, visitNumber, source, medium, campaignID, deviceCategory

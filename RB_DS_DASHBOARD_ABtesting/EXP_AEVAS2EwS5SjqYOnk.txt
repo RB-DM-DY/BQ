@@ -1,0 +1,38 @@
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+-----------------------------------------------         BUILDING TABLES          ----------------------------------------------
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+WITH PERIOD AS (
+SELECT '20180101' AS StartDate,
+       REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","") AS FinishDate
+--       '20191007'AS FinishDate
+),
+SESSIONID AS (
+SELECT * EXCEPT(date,	fullVisitorId,	clientId,	sessionId,	visitStartTime, visitNumber)
+FROM (
+SELECT *
+FROM (
+SELECT date, fullVisitorId, clientId, IF(customDimensions.index=4,customDimensions.value,NULL) AS sessionId,
+       visitStartTime, CONCAT(fullVisitorId,"_",CAST(visitStartTime AS STRING)) AS NEWSESID, visitNumber,  
+       exp.experimentId, exp.experimentVariant,
+--       device.deviceCategory, geoNetwork.country, geoNetwork.region, geoNetwork.city,
+--       trafficSource.source, trafficSource.medium, trafficSource.campaign, trafficSource.keyword,
+--       CASE
+--           WHEN STRPOS(h.page.pagePath,"?")>0 THEN REPLACE(SUBSTR(h.page.pagePath,0,STRPOS(h.page.pagePath,"?")-1),"//","/")
+--           WHEN REGEXP_CONTAINS(h.page.pagePath,R"seg_") THEN REPLACE(SPLIT(h.page.pagePath,"seg_")[OFFSET (0)],"//","/")
+--           WHEN REGEXP_CONTAINS(h.page.pagePath,R"//") THEN REPLACE(h.page.pagePath,"//","/")
+--           ELSE h.page.pagePath
+--       END AS pagePath
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h, UNNEST(h.experiment) AS exp, PERIOD
+WHERE
+      _TABLE_SUFFIX BETWEEN PERIOD.StartDate AND PERIOD.FinishDate
+GROUP BY date, clientId, visitStartTime, visitNumber, fullVisitorId, experimentId, experimentVariant, sessionId
+--         source, medium, campaign, keyword, sessionId, pagePath,  deviceCategory, country, region, city
+) AS t1
+WHERE --sessionId IS NOT NULL AND 
+      REGEXP_CONTAINS(experimentId,R"AEVAS2EwS5SjqYOnk-E-Ow") --experimentId="pguiJZ-kQnSdKD3r_bJnkg"
+) AS t2
+GROUP BY NEWSESID, experimentId, experimentVariant
+)
+
+SELECT *
+FROM SESSIONID

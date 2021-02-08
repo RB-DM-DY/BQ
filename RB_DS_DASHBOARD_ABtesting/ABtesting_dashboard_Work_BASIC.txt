@@ -1,0 +1,582 @@
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+-----------------------------------------------         BUILDING TABLES          ----------------------------------------------
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+WITH PERIOD AS (
+SELECT '20180101' AS StartDate,
+       REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","") AS FinishDate
+--       '20191007'AS FinishDate
+),
+SESSIONID AS (
+SELECT *
+FROM (
+SELECT *,
+       MIN(hitNumber) OVER (PARTITION BY sessionId, experimentId, experimentVariant, pagePath) AS MinHit
+FROM (
+SELECT * EXCEPT(Clean)
+FROM (
+SELECT *, IF(REGEXP_CONTAINS(pagePath,R"\/virtual\/"),"DEL","SAVE") AS Clean
+FROM (
+SELECT *
+FROM (
+SELECT date, clientId, CONCAT(fullVisitorId,"_",CAST(visitStartTime AS STRING)) AS sessionId,
+       visitStartTime, visitNumber, h.hitNumber, h.type,
+       exp.experimentId, exp.experimentVariant, device.deviceCategory, 
+       CASE 
+           WHEN device.operatingSystem='iOS' THEN 'iOS'
+           WHEN device.operatingSystem='Android' THEN 'Android'           
+           ELSE 'Other'
+       END AS operatingSystem,
+       geoNetwork.country, geoNetwork.region, geoNetwork.city,
+       trafficSource.source, trafficSource.medium, trafficSource.campaign, trafficSource.keyword,
+       CASE
+           WHEN STRPOS(h.page.pagePath,"?")>0 THEN REPLACE(SUBSTR(h.page.pagePath,0,STRPOS(h.page.pagePath,"?")-1),"//","/")
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"seg_") THEN REPLACE(SPLIT(h.page.pagePath,"seg_")[OFFSET (0)],"//","/")
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"//") THEN REPLACE(h.page.pagePath,"//","/")
+           ELSE h.page.pagePath
+       END AS pagePath
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h, UNNEST(h.experiment) AS exp, PERIOD
+WHERE
+      _TABLE_SUFFIX BETWEEN PERIOD.StartDate AND PERIOD.FinishDate
+GROUP BY date, clientId, visitStartTime, visitNumber, hitNumber, type,
+         source, medium, campaign, keyword, sessionId, pagePath, experimentId, experimentVariant, deviceCategory, operatingSystem, country, region, city
+) AS t1
+WHERE sessionId IS NOT NULL 
+--      AND REGEXP_CONTAINS(experimentId,R"yMQlVH4ATwGcKQEk4UbB2g|AEVAS2EwS5SjqYOnk-E-Ow|weloMcBUR5mgFBNdQ6fD5g|JpYE6SNlTy6z01CfTI21Mw|j33xKtQjRYuskQCXKf73Iw") --experimentId="pguiJZ-kQnSdKD3r_bJnkg"
+--      AND REGEXP_CONTAINS(experimentId,R"3CfVlVWkR7qW9rSHsQmsfg")
+--     and sessionId="5162741001356316745_1574090657"
+) AS t2     
+) AS t3
+WHERE Clean="SAVE"
+) AS t4
+) AS t5
+WHERE hitNumber=MinHit --LEAVE FIRST HIT INTO EXPERIMENT SESSION
+),
+LEADS AS (
+SELECT date, clientId, sessionId, visitStartTime, eventCategory, eventAction, experimentId, experimentVariant,
+       CASE
+           WHEN REGEXP_CONTAINS(eventLabel,'order:') THEN 
+                IF(REGEXP_CONTAINS(REPLACE(SUBSTR(eventLabel,STRPOS(eventLabel,"order:")),"order:",""),R'_'),
+                   SPLIT(REPLACE(SUBSTR(eventLabel,STRPOS(eventLabel,"order:")),"order:",""),'_')[OFFSET (0)],
+                   REPLACE(SUBSTR(eventLabel,STRPOS(eventLabel,"order:")),"order:",""))
+           ELSE NULL
+       END AS eventLabel,
+--!!!! OLD VERSION      REPLACE(SPLIT(eventLabel,"_")[OFFSET (1)],"order:","") AS eventLabel, 
+       ProductGoals, pagePath
+FROM (       
+SELECT date, clientId, CONCAT(fullVisitorId,"_",CAST(visitStartTime AS STRING)) AS sessionId,
+       visitStartTime, exp.experimentId, exp.experimentVariant,
+       h.eventInfo.eventCategory, h.eventInfo.eventAction, h.eventInfo.eventLabel,
+       `raiffeisen-owox.RB_DS_RUAKBP5.getPRODUCT_by_SEND_OK` (h.eventInfo.eventAction) AS ProductGoals,    
+       CASE
+           WHEN STRPOS(h.page.pagePath,"?")>0 THEN REPLACE(SUBSTR(h.page.pagePath,0,STRPOS(h.page.pagePath,"?")-1),"//","/")
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"seg_") THEN REPLACE(SPLIT(h.page.pagePath,"seg_")[OFFSET (0)],"//","/")
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"//") THEN REPLACE(h.page.pagePath,"//","/")
+           ELSE h.page.pagePath
+       END AS pagePath       
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h, UNNEST(h.experiment) AS exp, PERIOD
+WHERE
+      _TABLE_SUFFIX BETWEEN PERIOD.StartDate AND PERIOD.FinishDate
+      AND REGEXP_CONTAINS(h.eventInfo.eventCategory,R"send_ok|accounting-send_ok") --!!!! ADD |accounting-send_ok
+GROUP BY date, clientId, sessionId, visitStartTime, eventCategory, eventAction, eventLabel, experimentId, experimentVariant, pagePath 
+) AS t1
+WHERE ProductGoals<>"Not sale" AND sessionId IS NOT NULL 
+--      AND REGEXP_CONTAINS(experimentId,R"yMQlVH4ATwGcKQEk4UbB2g|AEVAS2EwS5SjqYOnk-E-Ow|weloMcBUR5mgFBNdQ6fD5g|JpYE6SNlTy6z01CfTI21Mw|j33xKtQjRYuskQCXKf73Iw")
+--      AND REGEXP_CONTAINS(experimentId,R"3CfVlVWkR7qW9rSHsQmsfg")      
+),
+EXP_PAGE_PPRODUCT AS ( --!!!! OLD VERSION
+SELECT *
+FROM (
+SELECT experimentId, experimentVariant, pagePath, ProductGoals,
+       SUM(Count) AS CountDouble,
+       MAX(SUM(Count)) OVER (PARTITION BY experimentId, experimentVariant) AS MaxDouble
+FROM (
+SELECT *, 1 AS Count
+FROM LEADS
+) AS t1
+GROUP BY experimentId, experimentVariant, pagePath, ProductGoals, Count
+) AS t2
+WHERE CountDouble=MaxDouble
+),
+EXP_PAGE AS ( --!!!! NEW VERSION
+SELECT t6.*, t7.ProductGoals
+FROM (
+SELECT *
+FROM (
+SELECT *, max(CountDouble) over (partition by experimentId, experimentVariant) AS MaxDouble
+FROM (
+SELECT experimentId, experimentVariant,	pagePath, 
+       COUNT(sessionId) OVER (PARTITION BY experimentId, experimentVariant, pagePath) AS CountDouble
+FROM (
+SELECT *
+FROM (
+
+SELECT *
+FROM (
+SELECT date, clientId, CONCAT(fullVisitorId,"_",CAST(visitStartTime AS STRING)) AS sessionId,
+       visitStartTime, visitNumber,-- h.hitNumber, h.type,
+       exp.experimentId, exp.experimentVariant,
+       CASE
+           WHEN STRPOS(h.page.pagePath,"?")>0 THEN REPLACE(SUBSTR(h.page.pagePath,0,STRPOS(h.page.pagePath,"?")-1),"//","/")
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"seg_") THEN REPLACE(SPLIT(h.page.pagePath,"seg_")[OFFSET (0)],"//","/")
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"//") THEN REPLACE(h.page.pagePath,"//","/")
+           ELSE h.page.pagePath
+      END AS pagePath
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h, UNNEST(h.experiment) AS exp, PERIOD
+WHERE
+      _TABLE_SUFFIX BETWEEN PERIOD.StartDate AND PERIOD.FinishDate
+GROUP BY date, clientId, sessionId, visitStartTime, visitNumber,-- hitNumber, type, 
+         experimentId, experimentVariant, pagePath
+) AS t1
+WHERE sessionId IS NOT NULL AND NOT REGEXP_CONTAINS(pagePath,R"\/virtual\/") AND visitNumber=1
+
+) AS t2 --WHERE REGEXP_CONTAINS(experimentId,R"5jjorqy5TauUAFtVeJhC7w|J4vhjO5gSRak5Kc33kjV7w|Hui-OueLRG6xtGP6exshzg")
+) AS t3 
+) AS t4 GROUP BY experimentId, experimentVariant,pagePath, CountDouble
+) AS t5 WHERE CountDouble=MaxDouble
+--ORDER BY experimentId, 	experimentVariant
+) AS t6
+LEFT JOIN (
+SELECT *
+FROM EXP_PAGE_PPRODUCT
+) AS t7
+ON t6.experimentId=t7.experimentId AND
+   t6.experimentVariant=t7.experimentVariant
+),
+EXP_DICTIONARY AS (
+SELECT *
+FROM `raiffeisen-owox.RB_DS_DASHBOARD_ABtesting.Experiments_dictionary`
+),
+QLEADS AS ( --<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ОСТАВЛЯЕМ ТОЛЬКО КУЛИДЫ
+SELECT *
+FROM (
+SELECT *,
+       `raiffeisen-owox.RB_DS_RUAKBP5.getQLEAD_by_CRM` (Product,StatusLead,ApprovalLead) AS QLead           
+FROM (
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--УНИКАЛИЗИРУЕМ ПО LEADID
+SELECT EXTRACT(MONTH FROM Date) AS Month, EXTRACT(YEAR FROM Date) AS Year, Date, SPLIT(LeadID,"_")[OFFSET (0)] AS LeadID, ProductLine, Product, Medium, 
+       UTM_CAMPAIGN AS Campaign, utm_term AS Keyword, NTB, VB, BrandFormance,
+       StatusLead, ApprovalLead
+FROM (
+SELECT Date, LeadID, ProductLine, Product, Medium, UTM_CAMPAIGN, utm_term, NTB, VB, BrandFormance,
+       StatusLead, ApprovalLead,
+       ROW_NUMBER() OVER (PARTITION BY LeadID) AS ROW
+FROM (
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ОБРАБОТКА ЛИДОВ С LEADID       
+SELECT DATE(LeadDate) AS Date, leadid AS LeadID, PRODUCT_LINE AS ProductLine, 
+       `raiffeisen-owox.RB_DS_RUAKBP5.getPRODUCT_by_CRM` (PRODUCT_LINE) AS Product,       
+       UTM_MEDIUM AS Medium, UTM_CAMPAIGN, utm_term,
+       NTB, STATUS AS StatusLead, APPROVAL AS ApprovalLead,
+       CASE 
+           WHEN REGEXP_CONTAINS(UTM_CAMPAIGN,R".*\|vb\|.*|.*\|vb|_vb|.*vb\||vb%|7Cvb|7cvb") THEN "TRUE"           
+       ELSE 'FALSE' END AS VB,
+          CASE 
+              WHEN REGEXP_CONTAINS(UTM_CAMPAIGN,R".*\|bf\|.*|_bf|brandfrm") THEN "TRUE"
+              ELSE "FALSE"
+          END AS BrandFormance       
+FROM `raiffeisen-owox.Orders_CRM.CRM_orders`
+WHERE --UTM_MEDIUM ='cpc'
+--      AND REGEXP_MATCH(UTM_SOURCE,R'yandex$|google$|mytarget|facebook|dbm|astraone')      
+--      AND CAST(DATE(LeadDate) AS STRING) BETWEEN '2018-11-01' AND '2018-11-30'
+      --AND 
+      CAST(DATE(LeadDate) AS STRING) BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'-01-01') AND CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING)
+--      AND REGEXP_CONTAINS(PRODUCT_LINE,r'Personal Loans')
+      AND leadid IS NOT NULL
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+UNION ALL
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ОБРАБОТКА ЛИДОВ БЕЗ LEADID
+SELECT Date, CAST(LeadID AS STRING) AS LeadID, ProductLine, Product, Medium, UTM_CAMPAIGN, utm_term, NTB, StatusLead, ApprovalLead, VB, BrandFormance
+FROM (       
+SELECT Date,
+       ROW_NUMBER() OVER (PARTITION BY LeadID) AS LeadID,
+       ProductLine, Product, Medium, UTM_CAMPAIGN, utm_term, NTB, StatusLead, ApprovalLead, VB, BrandFormance
+FROM (       
+SELECT DATE(LeadDate) AS Date, leadid AS LeadID, PRODUCT_LINE AS ProductLine, 
+       `raiffeisen-owox.RB_DS_RUAKBP5.getPRODUCT_by_CRM` (PRODUCT_LINE) AS Product,  
+       CASE 
+           WHEN REGEXP_CONTAINS(UTM_CAMPAIGN,r'.*\|vb\|.*|.*\|vb|_vb|.*vb\||vb%|7Cvb|7cvb') THEN 'TRUE'
+       ELSE 'FALSE' END AS VB,
+          CASE 
+              WHEN REGEXP_CONTAINS(UTM_CAMPAIGN,R".*\|bf\|.*|_bf|brandfrm") THEN "TRUE"
+              ELSE "FALSE"
+          END AS BrandFormance,         
+       UTM_MEDIUM AS Medium, UTM_CAMPAIGN, utm_term,
+       NTB, STATUS AS StatusLead, APPROVAL AS ApprovalLead 
+FROM `raiffeisen-owox.Orders_CRM.CRM_orders`
+WHERE --UTM_MEDIUM ='cpc'
+--      AND REGEXP_MATCH(UTM_SOURCE,R'yandex$|google$|mytarget|facebook|dbm|astraone')      
+--      AND CAST(DATE(LeadDate) AS STRING) BETWEEN '2018-11-01' AND '2018-11-30'
+      --AND 
+      CAST(DATE(LeadDate) AS STRING) BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'-01-01') AND CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING)
+--      AND REGEXP_CONTAINS(PRODUCT_LINE,r'Personal Loans')
+      AND leadid IS NULL
+) AS t0
+) AS t1
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+) AS t1
+) AS t2
+WHERE ROW=1
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+) AS t1
+) AS t2
+WHERE QLead = 'QLead'
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+),
+ISSUES AS ( --<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ОСТАВЛЯЕМ ТОЛЬКО КУЛИДЫ
+SELECT *
+FROM (
+SELECT *,
+       `raiffeisen-owox.RB_DS_RUAKBP5.getISSUE_by_CRM` (Product,StatusLead,ApprovalLead) AS Issue             
+FROM (
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--УНИКАЛИЗИРУЕМ ПО LEADID
+SELECT EXTRACT(MONTH FROM Date) AS Month, EXTRACT(YEAR FROM Date) AS Year, Date, SPLIT(LeadID,"_")[OFFSET (0)] AS LeadID, ProductLine, Product, Medium, 
+       UTM_CAMPAIGN AS Campaign, utm_term AS Keyword, NTB, VB, BrandFormance,
+       StatusLead, ApprovalLead
+FROM (
+SELECT Date, LeadID, ProductLine, Product, Medium, UTM_CAMPAIGN, utm_term, NTB, VB, BrandFormance,
+       StatusLead, ApprovalLead,
+       ROW_NUMBER() OVER (PARTITION BY LeadID) AS ROW
+FROM (
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ОБРАБОТКА ЛИДОВ С LEADID       
+SELECT DATE(LeadDate) AS Date, leadid AS LeadID, PRODUCT_LINE AS ProductLine, 
+       `raiffeisen-owox.RB_DS_RUAKBP5.getPRODUCT_by_CRM` (PRODUCT_LINE) AS Product,        
+       UTM_MEDIUM AS Medium, UTM_CAMPAIGN, utm_term,
+       NTB, STATUS AS StatusLead, APPROVAL AS ApprovalLead,
+       CASE 
+           WHEN REGEXP_CONTAINS(UTM_CAMPAIGN,R".*\|vb\|.*|.*\|vb|_vb|.*vb\||vb%|7Cvb|7cvb") THEN "TRUE"           
+       ELSE 'FALSE' END AS VB,
+          CASE 
+              WHEN REGEXP_CONTAINS(UTM_CAMPAIGN,R".*\|bf\|.*|_bf|brandfrm") THEN "TRUE"
+              ELSE "FALSE"
+          END AS BrandFormance       
+FROM `raiffeisen-owox.Orders_CRM.CRM_orders`
+WHERE --UTM_MEDIUM ='cpc'
+--      AND REGEXP_MATCH(UTM_SOURCE,R'yandex$|google$|mytarget|facebook|dbm|astraone')      
+--      AND CAST(DATE(LeadDate) AS STRING) BETWEEN '2018-11-01' AND '2018-11-30'
+      --AND
+      CAST(DATE(LeadDate) AS STRING) BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'-01-01') AND CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING)
+--      AND REGEXP_CONTAINS(PRODUCT_LINE,r'Personal Loans')
+      AND leadid IS NOT NULL
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+UNION ALL
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ОБРАБОТКА ЛИДОВ БЕЗ LEADID
+SELECT Date, CAST(LeadID AS STRING) AS LeadID, ProductLine, Product, Medium, UTM_CAMPAIGN, utm_term, NTB, StatusLead, ApprovalLead, VB, BrandFormance
+FROM (       
+SELECT Date,
+       ROW_NUMBER() OVER (PARTITION BY LeadID) AS LeadID,
+       ProductLine, Product, Medium, UTM_CAMPAIGN, utm_term, NTB, StatusLead, ApprovalLead, VB, BrandFormance
+FROM (       
+SELECT DATE(LeadDate) AS Date, leadid AS LeadID, PRODUCT_LINE AS ProductLine, 
+       `raiffeisen-owox.RB_DS_RUAKBP5.getPRODUCT_by_CRM` (PRODUCT_LINE) AS Product,  
+       CASE 
+           WHEN REGEXP_CONTAINS(UTM_CAMPAIGN,r'.*\|vb\|.*|.*\|vb|_vb|.*vb\||vb%|7Cvb|7cvb') THEN 'TRUE'
+       ELSE 'FALSE' END AS VB,
+          CASE 
+              WHEN REGEXP_CONTAINS(UTM_CAMPAIGN,R".*\|bf\|.*|_bf|brandfrm") THEN "TRUE"
+              ELSE "FALSE"
+          END AS BrandFormance,         
+       UTM_MEDIUM AS Medium, UTM_CAMPAIGN, utm_term,
+       NTB, STATUS AS StatusLead, APPROVAL AS ApprovalLead 
+FROM `raiffeisen-owox.Orders_CRM.CRM_orders`
+WHERE --UTM_MEDIUM ='cpc'
+--      AND REGEXP_MATCH(UTM_SOURCE,R'yandex$|google$|mytarget|facebook|dbm|astraone')      
+--      AND CAST(DATE(LeadDate) AS STRING) BETWEEN '2018-11-01' AND '2018-11-30'
+      --AND
+      CAST(DATE(LeadDate) AS STRING) BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'-01-01') AND CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING)
+--      AND REGEXP_CONTAINS(PRODUCT_LINE,r'Personal Loans')
+      AND leadid IS NULL
+) AS t0
+) AS t1
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+) AS t1
+) AS t2
+WHERE ROW=1
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+) AS t1
+) AS t2
+WHERE Issue = 'Issue'
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+),
+STEP1_COMPLITE AS (
+SELECT * EXCEPT(Clean)
+FROM (
+SELECT *, IF(REGEXP_CONTAINS(pagePath,R"\/virtual\/"),"DEL","SAVE") AS Clean
+FROM (
+SELECT *
+FROM (
+SELECT date, clientId, CONCAT(fullVisitorId,"_",CAST(visitStartTime AS STRING)) AS sessionId,
+       visitStartTime, visitNumber, --h.hitNumber, h.type,
+       exp.experimentId, exp.experimentVariant, 
+       h.eventinfo.eventCategory, h.eventinfo.eventAction, h.eventinfo.eventLabel,
+       CASE
+           WHEN STRPOS(h.page.pagePath,"?")>0 THEN REPLACE(SUBSTR(h.page.pagePath,0,STRPOS(h.page.pagePath,"?")-1),"//","/")
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"seg_") THEN REPLACE(SPLIT(h.page.pagePath,"seg_")[OFFSET (0)],"//","/")
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"//") THEN REPLACE(h.page.pagePath,"//","/")
+           ELSE h.page.pagePath
+       END AS pagePath
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h, UNNEST(h.experiment) AS exp, PERIOD
+WHERE
+      _TABLE_SUFFIX BETWEEN PERIOD.StartDate AND PERIOD.FinishDate AND
+      REGEXP_CONTAINS(h.eventinfo.eventCategory,R'Interaction form site|Interaction: Form|Interaction form') AND
+      REGEXP_CONTAINS(h.eventinfo.eventAction,R'^2$|Interaction: Step 2 of .*|Step 2 of .*') AND
+      REGEXP_CONTAINS(h.eventinfo.eventLabel,R'^Label:changeStep.*|^Label:Visibility.*')
+GROUP BY date, clientId, fullVisitorId, visitStartTime, visitNumber, --hitNumber, type, 
+         pagePath, experimentId, experimentVariant, eventCategory, eventAction, eventLabel
+) AS t1
+WHERE sessionId IS NOT NULL 
+) AS t2     
+) AS t3
+WHERE Clean="SAVE"
+)
+
+
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+-----------------------------------------------            START QUERY           ----------------------------------------------
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+
+--select *
+--from (
+--select operatingSystem, count(operatingSystem) over (partition by operatingSystem) as count
+--from (
+
+SELECT *
+FROM (
+--------------------------------------------------------------------------------------------------------------------------------
+--ADD STEP1 COMPLETE EVENT
+SELECT t23.date, t23.clientId, t23.sessionId,	t23.visitStartTime,	t23.visitNumber, t23.hitNumber,	t23.experimentId,	t23.experimentVariant, 
+       t23.deviceCategory, t23.operatingSystem,	t23.country, t23.region, t23.city, t23.source, t23.medium, t23.campaign, t23.keyword,	t23.pagePath,	
+       t23.Ldate, t23.LclientId,	t23.LsessionId,	t23.LeventAction,	t23.LProductGoals, t23.LorderID, t23.LpagePath,	t23.EXPpagePath, t23.EXPproductGoals,	t23.expPage, t23.RangeCountSessions, 
+       t23.Sessions, IF(t24.sessionId IS NULL,0,1) AS Step1_Complete, t23.Leads,	t23.QLeads,	t23.Issues,	t23.StartDate, t23.ControlDate,	t23.DuringDay, t23.DuringWeek, t23.First3Days, 
+       t23.EXPERIMENT_NAME,	t23.WHAT_TESTING,	t23.HYPOTHESIS
+--       ,COUNT(t23.sessionId) OVER (PARTITION BY t23.sessionId, t23.experimentId, t23.experimentVariant) AS COUNT
+FROM (
+--------------------------------------------------------------------------------------------------------------------------------
+--DATA ONLY EXPERIMENT BY APPROACH GOOGLE
+--select *
+--from (
+--select experimentId,	experimentVariant,
+--       sum(Sessions) over (partition by experimentId,	experimentVariant) as sessions,
+--       sum(Leads) over (partition by experimentId,	experimentVariant) as goals
+--from ( 
+
+SELECT * EXCEPT(SUMbyROW,	MAXbyROW,	MAXSES,	MAXLeads,	MAXQLeads, MAXIssues,	COUNTsesROW, NUMsesROW)
+FROM (
+SELECT * EXCEPT(Clean)
+FROM (
+SELECT *, --IDENTIFICATION WHERE SAME KIND DURING FUNNEL
+       IF(SUMbyROW=MAXbyROW, "SAVE","DEL") AS Clean
+FROM (
+SELECT *,-- EXCEPT(StartDate, ControlDate,	DuringDay, DuringWeek, First3Days, EXPERIMENT_NAME,	WHAT_TESTING,	HYPOTHESIS), --<<!!!!!!!!!!!!!
+       MAX(SUMbyROW) OVER (PARTITION BY sessionId, experimentId,	experimentVariant) AS MAXbyROW, 
+       MAX(Sessions) OVER (PARTITION BY sessionId, experimentId,	experimentVariant) AS MAXSES,
+       MAX(Leads) OVER (PARTITION BY sessionId, experimentId,	experimentVariant) AS MAXLeads,  
+       MAX(QLeads) OVER (PARTITION BY sessionId, experimentId,	experimentVariant) AS MAXQLeads, 
+       MAX(Issues) OVER (PARTITION BY sessionId, experimentId,	experimentVariant) AS MAXIssues,
+       COUNT(sessionId) OVER (PARTITION BY sessionId, experimentId,	experimentVariant) AS COUNTsesROW,
+       ROW_NUMBER() OVER (PARTITION BY sessionId, experimentId,	experimentVariant) AS NUMsesROW
+FROM (
+SELECT date, clientId, sessionId, visitStartTime, visitNumber, hitNumber, experimentId, experimentVariant, deviceCategory, operatingSystem, country,	region,	city,
+       source, medium, campaign, keyword, pagePath, Ldate, LclientId, LsessionId, LeventAction, LProductGoals, LorderID, LpagePath, 
+       EXPpagePath, EXPproductGoals, 
+       expPage, RangeCountSessions, Sessions, Leads, QLeads, Issues, 
+       StartDate, ControlDate, 
+       DATE_DIFF(DATE_ADD(ControlDate,INTERVAL 1 DAY),StartDate,DAY) as DuringDay,
+       DATE_DIFF(DATE_ADD(ControlDate,INTERVAL 1 DAY),StartDate,WEEK) as DuringWeek,       
+       First3Days, 
+       EXPERIMENT_NAME,	WHAT_TESTING,	HYPOTHESIS,
+       Sessions+Leads+QLeads+Issues AS SUMbyROW
+FROM (
+SELECT date, clientId, sessionId, visitStartTime, visitNumber, hitNumber, experimentId, experimentVariant, deviceCategory, operatingSystem, country,	region,	city,
+       source, medium, campaign, keyword, pagePath, Ldate, LclientId, LsessionId, LeventAction, LProductGoals, LorderID, LpagePath, 
+       EXPpagePath, EXPproductGoals, 
+       expPage, RangeCountSessions, Sessions, Leads, QLeads, Issues, 
+       StartDate, 
+       DATE(CAST(SUBSTR(ControlDate, 0, 4) AS INT64),CAST(SUBSTR(SUBSTR(ControlDate, 0, 6),-2) AS INT64),CAST(SUBSTR(ControlDate,-2) AS INT64)) AS ControlDate, 
+       First3Days, 
+       EXPERIMENT_NAME,	WHAT_TESTING,	HYPOTHESIS
+FROM (
+SELECT t15.*,
+       t16.EXPERIMENT_NAME, t16.WHAT_TESTING, t16.HYPOTHESIS
+FROM (       
+SELECT *,
+--       DATE_ADD(StartDate, INTERVAL 3 DAY) AS ControlDate, --!!!!!!!<<
+       max(date) over (partition by experimentId) as ControlDate,
+       CASE 
+           WHEN DATE(CAST(SUBSTR(date, 0, 4) AS INT64),CAST(SUBSTR(SUBSTR(date, 0, 6),-2) AS INT64),CAST(SUBSTR(date,-2) AS INT64)) 
+                BETWEEN StartDate AND DATE_ADD(StartDate, INTERVAL 3 DAY) THEN "Include"
+           ELSE "Exclude"
+       END AS First3Days
+FROM (
+SELECT *,
+       MIN(DATE(CAST(SUBSTR(date, 0, 4) AS INT64),CAST(SUBSTR(SUBSTR(date, 0, 6),-2) AS INT64),CAST(SUBSTR(date,-2) AS INT64))) OVER (PARTITION BY experimentId) AS StartDate
+FROM (       
+SELECT t11.*,
+       IF(t12.LeadID IS NULL,0,1) AS Issues -- ADD ISSUES
+FROM ( 
+SELECT t9.*,
+       IF(t10.LeadID IS NULL,0,1) AS QLeads -- ADD QLEADS
+FROM (       
+SELECT *,
+       CASE 
+           WHEN EXPpagePath = pagePath THEN "expPage=yes"
+           ELSE "expPage=not"
+       END expPage,
+       CASE 
+            WHEN COUNT(clientId) OVER (PARTITION BY clientId) = 1 THEN "1" 
+            ELSE "more 1"
+       END AS RangeCountSessions,
+       1 AS Sessions,
+       IF(LProductGoals IS NULL,0,1) AS Leads
+FROM (    
+----select *
+----from (
+----select experimentId,	experimentVariant,
+----       count(date) over (partition by experimentId,	experimentVariant) as sessions,
+----       count(LorderID) over (partition by experimentId,	experimentVariant) as goals
+----from (       
+SELECT date, clientId, sessionId, visitStartTime, visitNumber, hitNumber, experimentId,	experimentVariant, 
+       deviceCategory, operatingSystem, country, region, city,
+       source, medium, campaign, keyword,	pagePath,
+       IF(LProductGoals=EXPproductGoals,Ldate,NULL) AS Ldate,
+       IF(LProductGoals=EXPproductGoals,LclientId,NULL) AS LclientId, 
+       IF(LProductGoals=EXPproductGoals,LsessionId,NULL) AS LsessionId, 
+       IF(LProductGoals=EXPproductGoals,LeventAction,NULL) AS LeventAction, 
+       IF(LProductGoals=EXPproductGoals,LProductGoals,NULL) AS LProductGoals, 
+       IF(LProductGoals=EXPproductGoals,LorderID,NULL) AS LorderID, 
+       IF(LProductGoals=EXPproductGoals,LpagePath,NULL) AS LpagePath,
+       EXPpagePath, EXPproductGoals
+FROM (       
+SELECT *,
+       CASE
+           WHEN Double = 1 THEN "SAVE"       
+           WHEN Double > 1 AND pagePath=LpagePath THEN "SAVE"
+           WHEN Double > 1 AND LpagePath IS NULL AND hitNumber=FirstHit AND MaxLdate=Ldate THEN "SAVE"
+           WHEN Double > 1 AND LpagePath IS NULL AND hitNumber=FirstHit AND MaxLdate IS NULL THEN "SAVE"            
+           ELSE "DEL"
+       END AS Clean
+FROM (
+SELECT t4.*, -- ADD ORIGINAL EXPERIMENT PAGES 
+       MIN(t4.hitNumber) OVER (PARTITION BY t4.sessionId, t4.visitStartTime, t4.visitNumber, t4.experimentId, t4.experimentVariant) AS FirstHit,
+       MAX(t4.Ldate) OVER (PARTITION BY t4.sessionId, t4.visitStartTime, t4.visitNumber, t4.experimentId, t4.experimentVariant) AS MaxLdate,       
+       t5.pagePath AS EXPpagePath, t5.ProductGoals AS EXPproductGoals     
+FROM (         
+SELECT date, clientId, sessionId, visitStartTime, visitNumber, hitNumber,	experimentId,	experimentVariant, 
+       deviceCategory, operatingSystem, country, region, city,
+       source, medium, campaign, keyword, pagePath,
+       IF(pagePath=LpagePath,Ldate,NULL) AS Ldate,
+       IF(pagePath=LpagePath,LclientId,NULL) AS LclientId,     
+       IF(pagePath=LpagePath,LsessionId,NULL) AS LsessionId, 
+       IF(pagePath=LpagePath,LeventAction,NULL) AS LeventAction,    
+       IF(pagePath=LpagePath,LProductGoals,NULL) AS LProductGoals,    
+       IF(pagePath=LpagePath,LorderID,NULL) AS LorderID,        
+       IF(pagePath=LpagePath,LpagePath,NULL) AS LpagePath,
+       COUNT(sessionId) OVER (PARTITION BY sessionId, experimentId,	experimentVariant) AS Double
+FROM (
+SELECT t1.*, -- ADD LEADS INTO EACH SESSION
+       t2.date AS Ldate, t2.clientId AS LclientId, t2.sessionId AS LsessionId, t2.eventAction AS LeventAction, 
+       t2.ProductGoals AS LProductGoals, t2.eventLabel AS LorderID, t2.pagePath AS LpagePath
+FROM (   
+SELECT *
+FROM SESSIONID
+) AS t1
+FULL JOIN (
+SELECT *
+FROM LEADS
+) AS t2
+ON t1.sessionId=t2.sessionId
+) AS t3
+) AS t4
+LEFT JOIN (
+SELECT *
+FROM EXP_PAGE
+) AS t5
+ON t4.experimentId=t5.experimentId	AND 
+   t4.experimentVariant=t5.experimentVariant
+) AS t6
+--ORDER BY clientId, sessionId, visitStartTime,	visitNumber
+) AS t7
+WHERE Clean="SAVE"
+GROUP BY date, clientId, sessionId,	visitStartTime,	visitNumber, hitNumber, experimentId, experimentVariant, deviceCategory, operatingSystem, country, region, city, 
+         source, medium, campaign, keyword, pagePath, Ldate, LclientId, LsessionId, LeventAction, LProductGoals, LorderID, LpagePath, EXPpagePath, EXPproductGoals
+--ORDER BY clientId, sessionId, visitStartTime,	visitNumber
+) AS t8
+--WHERE REGEXP_CONTAINS(sessionId,"9152388486850877601_1574762370|464341435776369080_1577356196|7829473744345660801_1576566169|4585469956238760649_1574769742|464341435776369080_1577107998|464341435776369080_1577188581|4690514797486084837_1575378934|4921724294450872755_1574699620|4983040527480638964_1574686197|4989488587651473053_1574917258|5206022215740108879_1576833241|5249318157554298454_1577597180|5276247310423463851_1575476275|5338062073200213298_1578466612|5470519805202458355_1574234312|5509136783875540014_1576131730|5782129019787910035_1576142030|5782129019787910035_1577103578|5795088959045800201_1576438065|5894580635204003444_1575385177|6070493721044079149_1578865760|6095990618297376365_1576486569|6134115960641341382_1578584910|6215230764541132902_1575033621|6239186627541464537_1576811812|6244240081766816734_1576520390|6369612212949983964_1575008243|6382445944596308061_1577188163|656464930765279261_1576491913|6632480875941658168_1578305320|6663399937474864676_1574783923|6663399937474864676_1576600929|6663399937474864676_1579061322|6668694485399495799_1574429764|6727311859755813973_1577356457|6797644002218388110_1573563020|6811512138086969311_1575985562|7128565614558722137_1574320218|7142766374161013481_1578897756|7142766374161013481_1579255119|7157214446585431868_1577371452|7171826380592151835_1576566092|7264893902372891607_1574333399|7274256046319652392_1579253965|7291379299182906361_1574844078|7583080477118439472_1574445136|7687589839023354241_1575203129|770074447902553327_1575550620|7756805139619812810_1576572990|7889465954910054951_1577192579|8047337442198298302_1575886541|8059369711473147827_1577107620|8118512051090475793_1576651566|8355829352337132899_1574843037|8550536476318006154_1576303500|8673339817627285915_1575813659|8682191994331566190_1574932619|868782893836826857_1578399983|895574418739953507_1577108908|9045633471242545001_1573627760|9160530941698875138_1575991029|9216251845942316358_1575882055|1015313073300467677_1575124070|1063380289986902976_1574058947|1157160093441806175_1574654100|11613941037649839_1576914893|1265718222229250841_1574778156|1415350952928665206_1575383779|1525534524977198487_1574719073|1554575603480697410_1576503455|1554845860003909635_1578466567|1914050583607441760_1577908610|1915827819600101503_1578320448|2137652306224868130_1574169379|2304253473454651144_1574673347|2334534466067691271_1574893558|237910863010545000_1576220821|2698231991751307057_1575907342|2702658848902590128_1578057304|288762837706893178_1574594424|290454324677149020_1574666723|3001513071469145912_1576662525|3001513071469145912_1576746456|3080449343400160710_1576250882|3146736489959429437_1573557576|3172589637577804566_1575553818|3343918412752260843_1576832854|3349234482751082640_1578930919|3356300386853350432_1575382112|3390409707155248211_1577473106|3452372208196672930_1576951255|363412246940137953_1576674933|3831433544860859568_1576174202|3844908042680229165_1577016646|3854088492326185166_1577445662|3943016468792388895_1575314025|41139049470444732_1578489456")   --<<<!!!!!!!!!!!!!!!!!!!!!!!!!!!
+) AS t9
+LEFT JOIN (
+SELECT *
+FROM QLEADS
+) AS t10
+ON t9.LorderID=t10.LeadID
+) AS t11
+LEFT JOIN (
+SELECT *
+FROM ISSUES
+) AS t12
+ON t11.LorderID=t12.LeadID
+) AS t13
+) AS t14
+) AS t15
+LEFT JOIN (
+SELECT *
+FROM EXP_DICTIONARY
+) AS t16
+ON t15.experimentId=t16.EXPERIMENT_ID 
+) AS t17
+) AS t18
+) AS t19
+) AS t20
+) AS t21
+WHERE Clean="SAVE"
+) AS t22
+WHERE NUMsesROW=1
+GROUP BY date, clientId, sessionId, visitStartTime, visitNumber, hitNumber, experimentId, experimentVariant, deviceCategory, operatingSystem, country, region, city,	
+         source, medium, campaign, keyword,	pagePath,	Ldate, LclientId,	LsessionId, LeventAction,	LProductGoals, LorderID, LpagePath,
+         EXPpagePath,	EXPproductGoals, 
+         expPage,	RangeCountSessions, Sessions,	Leads, QLeads, Issues, StartDate, ControlDate, DuringDay, DuringWeek,
+         First3Days, EXPERIMENT_NAME,	WHAT_TESTING,	HYPOTHESIS
+         
+--) as t
+--) as t
+--group by sessions, goals, experimentId,	experimentVariant
+--order by experimentId,	experimentVariant
+-------------------------------------------------------------------------------------------------------------------------------
+) AS t23
+LEFT JOIN (
+SELECT *
+FROM STEP1_COMPLITE
+) AS t24
+ON t23.sessionId=t24.sessionId AND
+   t23.experimentId=t24.experimentId AND 
+   t23.experimentVariant=t24.experimentVariant AND
+   t23.pagePath=t24.pagePath
+--------------------------------------------------------------------------------------------------------------------------------
+) AS t25 
+--WHERE COUNT > 1
+GROUP BY date, clientId, sessionId,	visitStartTime,	visitNumber, hitNumber,	experimentId,	experimentVariant, 
+         deviceCategory, operatingSystem,	country, region, city, source, medium, campaign, keyword,	pagePath,
+         Ldate,	LclientId, LsessionId, LeventAction, LProductGoals,	LorderID,	LpagePath, EXPpagePath,	EXPproductGoals, expPage,
+         RangeCountSessions, Sessions, Step1_Complete, Leads,	QLeads,	Issues,	StartDate, ControlDate,	DuringDay, DuringWeek, First3Days,
+         EXPERIMENT_NAME,	WHAT_TESTING,	HYPOTHESIS
+
+--) as t where experimentId='IG1AJ7u3ROW-kTJNYaNYBQ'
+--) as t group by operatingSystem, count
+
+
+
+
+--SELECT *
+--FROM (
+--SELECT *, COUNT(sessionId) OVER (PARTITION BY sessionId, experimentId, experimentVariant) AS COUNT
+--FROM STEP1_COMPLITE
+--) AS T WHERE COUNT > 1
+--ORDER BY sessionId,  pagePath--, hitNumber,
+
