@@ -1,0 +1,140 @@
+WITH LEAD_GA AS (
+SELECT Goal_page,	Source,	Medium,	Campaign,	Lead_type, convert_id, promoCode,	Leads, QLeads, Issues, 
+       IF(debit_id='',CAST(CAST(convert_id AS INT64)-1 AS STRING),debit_id) AS debit_id
+FROM (
+SELECT SPLIT(string_field_0,';')[OFFSET (0)] AS Goal_page,
+       SPLIT(string_field_0,';')[OFFSET (1)] AS Source,
+       SPLIT(string_field_0,';')[OFFSET (2)] AS Medium,
+       SPLIT(string_field_0,';')[OFFSET (3)] AS Campaign,
+       SPLIT(string_field_0,';')[OFFSET (4)] AS Lead_type,
+       SPLIT(string_field_0,';')[OFFSET (5)] AS convert_id,
+       SPLIT(string_field_0,';')[OFFSET (6)] AS promoCode,
+       SPLIT(string_field_0,';')[OFFSET (7)] AS Leads,
+       SPLIT(string_field_0,';')[OFFSET (8)] AS QLeads,
+       SPLIT(string_field_0,';')[OFFSET (9)] AS Issues,
+       SPLIT(string_field_0,';')[OFFSET (10)] AS debit_id
+FROM `raiffeisen-owox.RB_DS_DASHBOARD_Communication_Team.RBRU Communication Team DashBoard_Evam_Lost`
+) AS t1
+),
+LEADS_CRM AS (--<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+-----------------------------------------------------------------------------------------------------------------
+--УНИКАЛИЗИРУЕМ ПО LEADID
+SELECT Date, GOOGLE_ID, IF(REGEXP_CONTAINS(LeadID,R'_STE'),SPLIT(LeadID,'_STE')[OFFSET (0)],LeadID) AS LeadID, 
+       IF(REGEXP_CONTAINS(ProductGoals,R"SA|TD"),"SA/TD",ProductGoals) AS ProductGoals, 
+       Source, Medium, UTM_CAMPAIGN AS Campaign, utm_term AS Keyword,
+--       IF(REGEXP_CONTAINS(utm_term,R"cid"),SUBSTR(utm_term,STRPOS(utm_term,"cid"),STRPOS(utm_term,",")-1),NULL) AS CID,
+       IF(REGEXP_CONTAINS(utm_term,R"cid"),
+                         SUBSTR(utm_term,STRPOS(utm_term,"cid"),
+                                IF(STRPOS(SUBSTR(utm_term,STRPOS(utm_term,"cid")),",")-1<0,LENGTH(SUBSTR(utm_term,STRPOS(utm_term,"cid"))),STRPOS(SUBSTR(utm_term,STRPOS(utm_term,"cid")),",")-1)
+                                ),
+          NULL) AS CID,       
+       IF(REGEXP_CONTAINS(utm_term,R"adi"),
+                         SUBSTR(utm_term,STRPOS(utm_term,"adi"),
+                                IF(STRPOS(SUBSTR(utm_term,STRPOS(utm_term,"adi")),",")-1<0,LENGTH(SUBSTR(utm_term,STRPOS(utm_term,"adi"))),STRPOS(SUBSTR(utm_term,STRPOS(utm_term,"adi")),",")-1)
+                                ),
+          NULL) AS ADI,       
+       NTB, StatusLead, ApprovalLead
+FROM (
+SELECT date, GOOGLE_ID, LeadID, ProductGoals, Source, Medium,    
+       IF(REGEXP_CONTAINS(UTM_CAMPAIGN,r"%2C|%2c"),REGEXP_REPLACE(UTM_CAMPAIGN,r"%2C|%2c",","),UTM_CAMPAIGN) AS UTM_CAMPAIGN, 
+       IF(REGEXP_CONTAINS(utm_term,r"%2C|%2c"),REGEXP_REPLACE(utm_term,r"%2C|%2c",","),utm_term) AS utm_term,        
+       NTB, StatusLead, ApprovalLead
+FROM (
+SELECT date, GOOGLE_ID, LeadID, ProductGoals, Source, Medium,    
+       IF(REGEXP_CONTAINS(UTM_CAMPAIGN,r"%3A|%3a|%253A|%253a"),REGEXP_REPLACE(UTM_CAMPAIGN,r"%3A|%3a|%253A|%253a",":"),UTM_CAMPAIGN) AS UTM_CAMPAIGN,   
+       IF(REGEXP_CONTAINS(utm_term,r"%3A|%3a|%253A|%253a"),REGEXP_REPLACE(utm_term,r"%3A|%3a|%253A|%253a",":"),utm_term) AS utm_term,        
+       NTB, StatusLead, ApprovalLead
+FROM (
+SELECT date, GOOGLE_ID, LeadID, ProductGoals, Source, Medium,   
+       IF(REGEXP_CONTAINS(UTM_CAMPAIGN,r"%7C|%7c|%257C|%257c"),REGEXP_REPLACE(UTM_CAMPAIGN,r"%7C|%7c|%257C|%257c","|"),UTM_CAMPAIGN) AS UTM_CAMPAIGN,
+       IF(REGEXP_CONTAINS(utm_term,r"%7C|%7c|%257C|%257c"),REGEXP_REPLACE(utm_term,r"%7C|%7c|%257C|%257c","|"),utm_term) AS utm_term,        
+       NTB, StatusLead, ApprovalLead
+FROM (
+SELECT Date, GOOGLE_ID, LeadID, ProductGoals, Source, Medium, UTM_CAMPAIGN, utm_term, NTB, StatusLead, ApprovalLead,
+       ROW_NUMBER() OVER (PARTITION BY LeadID) AS ROW
+FROM (
+-----------------------------------------------------------------------------------------------------------------
+--ОБРАБОТКА ЛИДОВ С LEADID       
+SELECT DATE(LeadDate) AS Date, GOOGLE_ID, leadid AS LeadID,
+       `raiffeisen-owox.RB_DS_RUAKBP5.getPRODUCT_by_CAMPAIGN` (UTM_CAMPAIGN) AS ProductGoals,
+--       `raiffeisen-owox.RB_DS_RUAKBP5.getPRODUCT_by_CRM` (PRODUCT_LINE) AS ProductGoals,      
+       UTM_SOURCE AS Source, UTM_MEDIUM AS Medium, UTM_CAMPAIGN, utm_term,
+       NTB, STATUS AS StatusLead, APPROVAL AS ApprovalLead    
+FROM `raiffeisen-owox.Orders_CRM.CRM_orders`
+WHERE leadid IS NOT NULL
+-----------------------------------------------------------------------------------------------------------------
+UNION ALL
+-----------------------------------------------------------------------------------------------------------------
+--ОБРАБОТКА ЛИДОВ БЕЗ LEADID
+SELECT Date, GOOGLE_ID, CAST(LeadID AS STRING) AS LeadID, ProductGoals, Source, Medium, UTM_CAMPAIGN, utm_term, NTB, StatusLead, ApprovalLead
+FROM (       
+SELECT Date, GOOGLE_ID,
+       ROW_NUMBER() OVER (PARTITION BY LeadID) AS LeadID,
+       ProductLine, ProductGoals, Source, Medium, UTM_CAMPAIGN, utm_term, NTB, StatusLead, ApprovalLead
+FROM (       
+SELECT DATE(LeadDate) AS Date, GOOGLE_ID, leadid AS LeadID, PRODUCT_LINE AS ProductLine, 
+       `raiffeisen-owox.RB_DS_RUAKBP5.getPRODUCT_by_CAMPAIGN` (UTM_CAMPAIGN) AS ProductGoals,
+--       `raiffeisen-owox.RB_DS_RUAKBP5.getPRODUCT_by_CRM` (PRODUCT_LINE) AS ProductGoals,         
+       UTM_SOURCE AS Source, UTM_MEDIUM AS Medium, UTM_CAMPAIGN, utm_term,
+       NTB, STATUS AS StatusLead, APPROVAL AS ApprovalLead 
+FROM `raiffeisen-owox.Orders_CRM.CRM_orders`
+WHERE leadid IS NULL
+) AS t0
+) AS t1
+-----------------------------------------------------------------------------------------------------------------
+) AS t1
+) AS t2
+WHERE ROW=1
+) AS t3
+) AS t4
+) AS t5
+-----------------------------------------------------------------------------------------------------------------
+),
+QLEADS_CRM AS (--<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+SELECT * EXCEPT(QLEADS)
+FROM (
+SELECT *, 
+       `raiffeisen-owox.RB_DS_RUAKBP5.getQLEAD_by_CRM` (ProductGoals, StatusLead, ApprovalLead) AS QLEADS
+FROM LEADS_CRM
+) AS t1 WHERE QLEADS="QLead"
+),
+ISSUES_CRM AS (--<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+SELECT * EXCEPT(ISSUES)
+FROM (
+SELECT *, 
+       `raiffeisen-owox.RB_DS_RUAKBP5.getISSUE_by_CRM` (ProductGoals, StatusLead, ApprovalLead) AS ISSUES
+FROM LEADS_CRM
+) AS t1 WHERE ISSUES="Issue"
+)
+
+
+
+SELECT MAIN.*,
+       IF(ISSUE.LeadID IS NULL,0,1) AS ISSUE_MERGE
+FROM (
+SELECT MAIN.*,
+       IF(QLEAD.LeadID IS NULL,0,1) AS QLEAD_MERGE
+FROM (
+SELECT MAIN.*,
+       IF(LEAD.LeadID IS NULL,0,1) AS LEAD_MERGE
+FROM (
+SELECT *
+FROM LEAD_GA
+) AS MAIN
+LEFT JOIN (
+SELECT *
+FROM LEADS_CRM
+) AS LEAD
+ON MAIN.debit_id=LEAD.LeadID
+) AS MAIN
+LEFT JOIN (
+SELECT *
+FROM QLEADS_CRM
+) AS QLEAD
+ON MAIN.debit_id=QLEAD.LeadID
+) AS MAIN
+LEFT JOIN (
+SELECT *
+FROM ISSUES_CRM
+) AS ISSUE
+ON MAIN.debit_id=ISSUE.LeadID

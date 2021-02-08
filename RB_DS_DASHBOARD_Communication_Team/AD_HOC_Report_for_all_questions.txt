@@ -1,0 +1,412 @@
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+-----------------------------------------------         BUILDING TABLES          ----------------------------------------------
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+
+WITH PERIOD AS (--<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+SELECT 
+#       CAST(DATE_TRUNC(DATE_SUB(DATE_SUB(DATE_ADD(DATE_TRUNC(CURRENT_DATE(),WEEK(MONDAY)), INTERVAL 6 day), INTERVAL 1 WEEK), INTERVAL 5 WEEK),WEEK(MONDAY)) AS STRING) AS StartDate,
+#       DATE_SUB(DATE_ADD(DATE_TRUNC(CURRENT_DATE(),WEEK(MONDAY)), INTERVAL 6 day), INTERVAL 1 WEEK) AS EndDate      
+#       CAST(DATE_TRUNC(DATE_SUB(CURRENT_DATE(), INTERVAL 4 WEEK),WEEK(MONDAY)) AS STRING) AS StartDate,
+#       CURRENT_DATE() AS EndDate
+       DATE_ADD(CURRENT_DATE(), INTERVAL -1 YEAR) AS StartDate,
+       CURRENT_DATE() AS EndDate
+#'2019-12-01' as StartDate,
+#'2020-12-31' as EndDate 
+),
+NOMINAL_HOST AS (
+#SELECT  ["www.raiffeisen.ru","old.raiffeisen.ru","ipoteka.raiffeisen.ru","www.ipoteka.raiffeisen.ru"] AS HOST
+SELECT  ["www.raiffeisen.ru"] AS HOST
+),
+SESSIONS_GA AS (--<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+-----------------------------------------------------------------------------------------------------
+--SESSIONS   
+SELECT * EXCEPT(NUM)
+FROM (
+SELECT *,
+       ROW_NUMBER() OVER (PARTITION BY sessionBQ) AS NUM
+FROM (       
+#SELECT date, sessionBQ, source, medium, campaign, keyword,
+#--       IF(REGEXP_CONTAINS(keyword,R"cid"),SUBSTR(keyword,STRPOS(keyword,"cid"),STRPOS(keyword,",")-1),NULL) AS CID,
+#       IF(REGEXP_CONTAINS(keyword,R"cid"),
+         # SUBSTR(keyword,STRPOS(keyword,"cid"),IF(STRPOS(SUBSTR(keyword,STRPOS(keyword,"cid")),",")-1<0,LENGTH(SUBSTR(keyword,STRPOS(keyword,"cid"))),STRPOS(SUBSTR(keyword,STRPOS(keyword,"cid")),",")-1)),
+#          NULL) AS CID,             
+#       IF(REGEXP_CONTAINS(keyword,R"adi"),
+         # SUBSTR(keyword,STRPOS(keyword,"adi"),IF(STRPOS(SUBSTR(keyword,STRPOS(keyword,"adi")),",")-1<0,LENGTH(SUBSTR(keyword,STRPOS(keyword,"adi"))),STRPOS(SUBSTR(keyword,STRPOS(keyword,"adi")),",")-1)),
+#          NULL) AS ADI,
+#       ProductGoals,
+#       CASE
+#           WHEN REGEXP_CONTAINS(campaign,R"sp:")-- AND REGEXP_CONTAINS(campaign,R"\|") 
+#                THEN
+#                SPLIT(SUBSTR(campaign,STRPOS(campaign,"sp:"),IF(STRPOS(SUBSTR(campaign,STRPOS(campaign,"sp:")),"|")-1<0,
+#                LENGTH(SUBSTR(campaign,STRPOS(campaign,"sp:"))),STRPOS(SUBSTR(campaign,STRPOS(campaign,"sp:")),"|")-1)),":")[OFFSET (1)]
+#           ELSE NULL
+#       END SubProduct,         
+#       `raiffeisen-owox.RB_DS_RUAKBP5.getPRODUCT_by_CAMPAIGN_PLT` (campaign) AS Placement,  
+#       CASE
+#           WHEN REGEXP_CONTAINS(campaign,R"sem:") AND REGEXP_CONTAINS(campaign,R"\|") 
+#                THEN
+#                SPLIT(SUBSTR(campaign,STRPOS(campaign,"sem:"),IF(STRPOS(SUBSTR(campaign,STRPOS(campaign,"sem:")),"|")-1<0,
+#                LENGTH(SUBSTR(campaign,STRPOS(campaign,"sem:"))),STRPOS(SUBSTR(campaign,STRPOS(campaign,"sem:")),"|")-1)),":")[OFFSET (1)]
+#           ELSE NULL
+#       END Semantic       
+#FROM (       
+SELECT DATE(CAST(SUBSTR(date,0,4) AS INT64),CAST(SUBSTR(SUBSTR(date, 0, 6),-2) AS INT64),CAST(SUBSTR(date,-2) AS INT64)) AS date,
+       hitNumber, sessionBQ, source, medium, campaign, keyword, content, #ProductGoals
+       CASE
+           WHEN STRPOS(Entrance_pagePath,"?")>0 THEN REPLACE(SUBSTR(Entrance_pagePath,0,STRPOS(Entrance_pagePath,"?")-1),"//","/")
+           WHEN REGEXP_CONTAINS(Entrance_pagePath,R"seg_") THEN REPLACE(SPLIT(Entrance_pagePath,"seg_")[OFFSET (0)],"//","/")
+           WHEN REGEXP_CONTAINS(Entrance_pagePath,R"//") THEN REPLACE(Entrance_pagePath,"//","/")
+           ELSE Entrance_pagePath
+       END AS Entrance_pagePath           
+FROM (
+SELECT date, hitNumber, sessionBQ, source, medium,
+       IF(REGEXP_CONTAINS(campaign,r"%7C|%7c|%257C|%257c"),REGEXP_REPLACE(campaign,r"%7C|%7c|%257C|%257c","|"),campaign) AS campaign,
+       IF(REGEXP_CONTAINS(keyword,r"%7C|%7c|%257C|%257c"),REGEXP_REPLACE(keyword,r"%7C|%7c|%257C|%257c","|"),keyword) AS keyword, 
+       IF(REGEXP_CONTAINS(content,r"%7C|%7c|%257C|%257c"),REGEXP_REPLACE(content,r"%7C|%7c|%257C|%257c","|"),content) AS content,  
+       Entrance_pagePath
+#       ProductGoals
+FROM ( 
+
+SELECT date, hitNumber, sessionBQ, source, medium,
+       IF(REGEXP_CONTAINS(campaign,r"%2C|%2c"),REGEXP_REPLACE(campaign,r"%2C|%2c",","),campaign) AS campaign,
+       IF(REGEXP_CONTAINS(keyword,r"%2C|%2c"),REGEXP_REPLACE(keyword,r"%2C|%2c",","),keyword) AS keyword, 
+       IF(REGEXP_CONTAINS(content,r"%2C|%2c"),REGEXP_REPLACE(content,r"%2C|%2c",","),content) AS content, 
+       Entrance_pagePath
+#       ProductGoals
+FROM (       
+SELECT date, hitNumber, sessionBQ, source, medium,
+       IF(REGEXP_CONTAINS(campaign,r"%3A|%3a|%253A|%253a"),REGEXP_REPLACE(campaign,r"%3A|%3a|%253A|%253a",":"),campaign) AS campaign,
+       IF(REGEXP_CONTAINS(keyword,r"%3A|%3a|%253A|%253a"),REGEXP_REPLACE(keyword,r"%3A|%3a|%253A|%253a",":"),keyword) AS keyword, 
+       IF(REGEXP_CONTAINS(content,r"%3A|%3a|%253A|%253a"),REGEXP_REPLACE(content,r"%3A|%3a|%253A|%253a",":"),content) AS content,
+       Entrance_pagePath
+#       ProductGoals
+FROM (
+SELECT date,
+       CONCAT(CAST(fullVisitorId AS STRING),"_",CAST(visitStartTime AS STRING)) AS sessionBQ,
+       h.hitNumber,
+       trafficSource.source AS source, trafficSource.medium AS medium, 
+       trafficSource.campaign AS campaign, trafficSource.keyword AS keyword, trafficSource.adContent AS content,
+       CASE
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R'\?') THEN LEFT(h.page.pagePath,STRPOS(h.page.pagePath,"?")-1)
+           ELSE h.page.pagePath
+       END AS Entrance_pagePath
+#       `raiffeisen-owox.RB_DS_RUAKBP5.getPRODUCT_by_CAMPAIGN` (trafficSource.campaign) AS ProductGoals
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h, PERIOD
+WHERE date BETWEEN REPLACE(CAST(PERIOD.StartDate AS STRING),"-","") AND REPLACE(CAST(PERIOD.EndDate AS STRING),"-","") --REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","") 
+      AND h.page.hostname IN (SELECT HOST FROM NOMINAL_HOST, UNNEST(HOST) AS HOST)
+      AND h.hitNumber=1
+GROUP BY date, hitNumber, sessionBQ, source, medium, campaign, keyword, content, Entrance_pagePath
+--LIMIT 100
+) AS t1
+) AS t2
+) AS t3 
+) AS t4
+#WHERE medium="cpc"-- AND REGEXP_CONTAINS(keyword,R"cid")
+) AS t5 
+#) AS t6
+) AS t7 #WHERE NUM=1
+-----------------------------------------------------------------------------------------------------
+),
+LEADID_GA_protocol AS (
+SELECT date, 
+       CONCAT(CAST(fullVisitorId AS STRING),"_",CAST(visitStartTime AS STRING)) AS sessionBQ,
+       h.eventInfo.eventCategory, h.eventInfo.eventAction, 
+       IF(REGEXP_CONTAINS(h.eventInfo.eventLabel,'_order:'),
+          SPLIT(SPLIT(h.eventInfo.eventLabel,'_order:')[OFFSET (1)],'_')[OFFSET (0)],
+          NULL) AS eventLabel,
+       CASE
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R'\?') THEN LEFT(h.page.pagePath,STRPOS(h.page.pagePath,"?")-1)
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"seg_") THEN REPLACE(SPLIT(h.page.pagePath,"seg_")[OFFSET (0)],"//","/")
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"//") THEN REPLACE(h.page.pagePath,"//","/")           
+           ELSE h.page.pagePath
+       END AS Entrance_Goal      
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h, PERIOD
+WHERE date BETWEEN REPLACE(CAST(PERIOD.StartDate AS STRING),"-","") AND REPLACE(CAST(PERIOD.EndDate AS STRING),"-","") --REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","") 
+#      AND h.page.hostname IN (SELECT HOST FROM NOMINAL_HOST, UNNEST(HOST) AS HOST)
+      AND h.eventInfo.eventCategory='RBRU_DM_send_ok'
+#      AND REGEXP_CONTAINS(h.eventInfo.eventLabel,r'^ConversionProb:.*\|BehaviourProb:.*\|Audience.*')
+GROUP BY date, sessionBQ, eventCategory, eventAction, eventLabel, Entrance_Goal
+),
+LEADID_GA_classic AS (
+SELECT date, 
+       CONCAT(CAST(fullVisitorId AS STRING),"_",CAST(visitStartTime AS STRING)) AS sessionBQ,
+       h.eventInfo.eventCategory, h.eventInfo.eventAction, 
+       IF(REGEXP_CONTAINS(h.eventInfo.eventLabel,'_order:'),
+          SPLIT(SPLIT(h.eventInfo.eventLabel,'_order:')[OFFSET (1)],'_')[OFFSET (0)],
+          NULL) AS eventLabel,
+       CASE
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R'\?') THEN LEFT(h.page.pagePath,STRPOS(h.page.pagePath,"?")-1)
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"seg_") THEN REPLACE(SPLIT(h.page.pagePath,"seg_")[OFFSET (0)],"//","/")
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"//") THEN REPLACE(h.page.pagePath,"//","/")           
+           ELSE h.page.pagePath
+       END AS Entrance_Goal     
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h, PERIOD
+WHERE date BETWEEN REPLACE(CAST(PERIOD.StartDate AS STRING),"-","") AND REPLACE(CAST(PERIOD.EndDate AS STRING),"-","") --REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","") 
+#      AND h.page.hostname IN (SELECT HOST FROM NOMINAL_HOST, UNNEST(HOST) AS HOST)
+      AND h.eventInfo.eventCategory='send_ok'
+#      AND REGEXP_CONTAINS(h.eventInfo.eventLabel,r'^ConversionProb:.*\|BehaviourProb:.*\|Audience.*')
+GROUP BY date, sessionBQ, eventCategory, eventAction, eventLabel, Entrance_Goal
+),
+LEADS_CRM AS (--<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+-----------------------------------------------------------------------------------------------------------------
+--УНИКАЛИЗИРУЕМ ПО LEADID
+SELECT Date, GOOGLE_ID, IF(REGEXP_CONTAINS(LeadID,R'_STE'),SPLIT(LeadID,'_STE')[OFFSET (0)],LeadID) AS LeadID, 
+       IF(REGEXP_CONTAINS(ProductGoals,R"SA|TD"),"SA/TD",ProductGoals) AS ProductGoals, 
+       Source, Medium, UTM_CAMPAIGN AS Campaign, utm_term AS Keyword,
+--       IF(REGEXP_CONTAINS(utm_term,R"cid"),SUBSTR(utm_term,STRPOS(utm_term,"cid"),STRPOS(utm_term,",")-1),NULL) AS CID,
+       IF(REGEXP_CONTAINS(utm_term,R"cid"),
+                         SUBSTR(utm_term,STRPOS(utm_term,"cid"),
+                                IF(STRPOS(SUBSTR(utm_term,STRPOS(utm_term,"cid")),",")-1<0,LENGTH(SUBSTR(utm_term,STRPOS(utm_term,"cid"))),STRPOS(SUBSTR(utm_term,STRPOS(utm_term,"cid")),",")-1)
+                                ),
+          NULL) AS CID,       
+       IF(REGEXP_CONTAINS(utm_term,R"adi"),
+                         SUBSTR(utm_term,STRPOS(utm_term,"adi"),
+                                IF(STRPOS(SUBSTR(utm_term,STRPOS(utm_term,"adi")),",")-1<0,LENGTH(SUBSTR(utm_term,STRPOS(utm_term,"adi"))),STRPOS(SUBSTR(utm_term,STRPOS(utm_term,"adi")),",")-1)
+                                ),
+          NULL) AS ADI,       
+       NTB, StatusLead, ApprovalLead
+FROM (
+SELECT date, GOOGLE_ID, LeadID, ProductGoals, Source, Medium,    
+       IF(REGEXP_CONTAINS(UTM_CAMPAIGN,r"%2C|%2c"),REGEXP_REPLACE(UTM_CAMPAIGN,r"%2C|%2c",","),UTM_CAMPAIGN) AS UTM_CAMPAIGN, 
+       IF(REGEXP_CONTAINS(utm_term,r"%2C|%2c"),REGEXP_REPLACE(utm_term,r"%2C|%2c",","),utm_term) AS utm_term,        
+       NTB, StatusLead, ApprovalLead
+FROM (
+SELECT date, GOOGLE_ID, LeadID, ProductGoals, Source, Medium,    
+       IF(REGEXP_CONTAINS(UTM_CAMPAIGN,r"%3A|%3a|%253A|%253a"),REGEXP_REPLACE(UTM_CAMPAIGN,r"%3A|%3a|%253A|%253a",":"),UTM_CAMPAIGN) AS UTM_CAMPAIGN,   
+       IF(REGEXP_CONTAINS(utm_term,r"%3A|%3a|%253A|%253a"),REGEXP_REPLACE(utm_term,r"%3A|%3a|%253A|%253a",":"),utm_term) AS utm_term,        
+       NTB, StatusLead, ApprovalLead
+FROM (
+SELECT date, GOOGLE_ID, LeadID, ProductGoals, Source, Medium,   
+       IF(REGEXP_CONTAINS(UTM_CAMPAIGN,r"%7C|%7c|%257C|%257c"),REGEXP_REPLACE(UTM_CAMPAIGN,r"%7C|%7c|%257C|%257c","|"),UTM_CAMPAIGN) AS UTM_CAMPAIGN,
+       IF(REGEXP_CONTAINS(utm_term,r"%7C|%7c|%257C|%257c"),REGEXP_REPLACE(utm_term,r"%7C|%7c|%257C|%257c","|"),utm_term) AS utm_term,        
+       NTB, StatusLead, ApprovalLead
+FROM (
+SELECT Date, GOOGLE_ID, LeadID, ProductGoals, Source, Medium, UTM_CAMPAIGN, utm_term, NTB, StatusLead, ApprovalLead,
+       ROW_NUMBER() OVER (PARTITION BY LeadID) AS ROW
+FROM (
+-----------------------------------------------------------------------------------------------------------------
+--ОБРАБОТКА ЛИДОВ С LEADID       
+SELECT DATE(LeadDate) AS Date, GOOGLE_ID, leadid AS LeadID,
+       `raiffeisen-owox.RB_DS_RUAKBP5.getPRODUCT_by_CAMPAIGN` (UTM_CAMPAIGN) AS ProductGoals,
+--       `raiffeisen-owox.RB_DS_RUAKBP5.getPRODUCT_by_CRM` (PRODUCT_LINE) AS ProductGoals,      
+       UTM_SOURCE AS Source, UTM_MEDIUM AS Medium, UTM_CAMPAIGN, utm_term,
+       NTB, STATUS AS StatusLead, APPROVAL AS ApprovalLead    
+FROM `raiffeisen-owox.Orders_CRM.CRM_orders`, PERIOD
+WHERE CAST(DATE(LeadDate) AS STRING) BETWEEN CAST(PERIOD.StartDate AS STRING) AND CAST(PERIOD.EndDate AS STRING)
+      AND leadid IS NOT NULL
+-----------------------------------------------------------------------------------------------------------------
+UNION ALL
+-----------------------------------------------------------------------------------------------------------------
+--ОБРАБОТКА ЛИДОВ БЕЗ LEADID
+SELECT Date, GOOGLE_ID, CAST(LeadID AS STRING) AS LeadID, ProductGoals, Source, Medium, UTM_CAMPAIGN, utm_term, NTB, StatusLead, ApprovalLead
+FROM (       
+SELECT Date, GOOGLE_ID,
+       ROW_NUMBER() OVER (PARTITION BY LeadID) AS LeadID,
+       ProductLine, ProductGoals, Source, Medium, UTM_CAMPAIGN, utm_term, NTB, StatusLead, ApprovalLead
+FROM (       
+SELECT DATE(LeadDate) AS Date, GOOGLE_ID, leadid AS LeadID, PRODUCT_LINE AS ProductLine, 
+       `raiffeisen-owox.RB_DS_RUAKBP5.getPRODUCT_by_CAMPAIGN` (UTM_CAMPAIGN) AS ProductGoals,
+--       `raiffeisen-owox.RB_DS_RUAKBP5.getPRODUCT_by_CRM` (PRODUCT_LINE) AS ProductGoals,         
+       UTM_SOURCE AS Source, UTM_MEDIUM AS Medium, UTM_CAMPAIGN, utm_term,
+       NTB, STATUS AS StatusLead, APPROVAL AS ApprovalLead 
+FROM `raiffeisen-owox.Orders_CRM.CRM_orders`, PERIOD
+WHERE CAST(DATE(LeadDate) AS STRING) BETWEEN CAST(PERIOD.StartDate AS STRING) AND CAST(PERIOD.EndDate AS STRING)
+      AND leadid IS NULL
+) AS t0
+) AS t1
+-----------------------------------------------------------------------------------------------------------------
+) AS t1
+) AS t2
+WHERE ROW=1
+) AS t3
+) AS t4
+) AS t5
+-----------------------------------------------------------------------------------------------------------------
+),
+QLEADS_CRM AS (--<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+SELECT * EXCEPT(QLEADS)
+FROM (
+SELECT *, 
+       `raiffeisen-owox.RB_DS_RUAKBP5.getQLEAD_by_CRM` (ProductGoals, StatusLead, ApprovalLead) AS QLEADS
+FROM LEADS_CRM
+) AS t1 WHERE QLEADS="QLead"
+),
+ISSUES_CRM AS (--<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+SELECT * EXCEPT(ISSUES)
+FROM (
+SELECT *, 
+       `raiffeisen-owox.RB_DS_RUAKBP5.getISSUE_by_CRM` (ProductGoals, StatusLead, ApprovalLead) AS ISSUES
+FROM LEADS_CRM
+) AS t1 WHERE ISSUES="Issue"
+),
+EVENTS_promoCode AS (
+SELECT * EXCEPT(ROWN, ROWC),
+       IF(STRPOS(eventLabel,'ContextMessage:')>0,
+          IF(REGEXP_CONTAINS(REGEXP_EXTRACT(eventLabel,'ContextMessage:.*'),R'_'),
+             SPLIT(SPLIT(REGEXP_EXTRACT(eventLabel,'ContextMessage:.*'),R'_')[OFFSET (0)],':')[OFFSET (1)],
+             SPLIT(REGEXP_EXTRACT(eventLabel,'ContextMessage:.*'),R':')[OFFSET (1)]),
+          '0') AS POS
+FROM (
+SELECT *,
+       ROW_NUMBER() OVER (PARTITION BY sessionBQ ORDER BY hitNumber) AS ROWN,
+       COUNT(sessionBQ) OVER (PARTITION BY sessionBQ) AS ROWC
+FROM (
+SELECT date, 
+       CONCAT(CAST(fullVisitorId AS STRING),"_",CAST(visitStartTime AS STRING)) AS sessionBQ,
+       h.hitNumber,
+       h.eventInfo.eventCategory, h.eventInfo.eventAction, h.eventInfo.eventLabel,
+       CASE
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R'\?') THEN LEFT(h.page.pagePath,STRPOS(h.page.pagePath,"?")-1)
+           ELSE h.page.pagePath
+       END AS Entrance_Event      
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h, PERIOD
+WHERE date BETWEEN REPLACE(CAST(PERIOD.StartDate AS STRING),"-","") AND REPLACE(CAST(PERIOD.EndDate AS STRING),"-","") --REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","") 
+#      AND h.page.hostname IN (SELECT HOST FROM NOMINAL_HOST, UNNEST(HOST) AS HOST)
+      AND REGEXP_CONTAINS(h.eventInfo.eventCategory,R"Interaction form$|Interaction: Form") 
+      AND REGEXP_CONTAINS(h.eventInfo.eventLabel,R"promoCode")
+      AND NOT REGEXP_CONTAINS(h.eventInfo.eventLabel,R'ContextMessage:null')
+      AND NOT REGEXP_CONTAINS(h.page.pagePath,R".*test.*")
+#      AND REGEXP_CONTAINS(h.eventInfo.eventLabel,r'^ConversionProb:.*\|BehaviourProb:.*\|Audience.*')
+GROUP BY date, sessionBQ, hitNumber, eventCategory, eventAction, eventLabel, Entrance_Event
+) AS t1
+) AS t2 WHERE ROWN=ROWC
+),
+EVENTS_deliveryType AS (-------<<<<<<
+SELECT * EXCEPT(ROW_N, ROW_C),
+       CASE
+           WHEN REGEXP_CONTAINS(eventLabel,R'ContextMessage') 
+                THEN SPLIT(SPLIT(SUBSTR(eventLabel,STRPOS(eventLabel, "ContextMessage")),'_')[OFFSET (0)],':')[OFFSET (1)]
+           ELSE 'Other'
+       END AS deliveryType
+FROM (
+SELECT *, 
+       ROW_NUMBER() OVER (PARTITION BY date, fullVisitorId,	sessionId ORDER BY hitNumber) AS ROW_N,
+       COUNT(sessionId) OVER (PARTITION BY date, fullVisitorId,	sessionId) AS ROW_C
+FROM (
+SELECT date, fullVisitorId, 
+       CONCAT(fullVisitorId,'_',visitStartTime) AS sessionId,
+       visitNumber, visitStartTime, 
+       CAST(ROUND(h.time/1000,0)+visitStartTime AS INT64) AS timeHit, --ПРЕОБРАЗУЕМ ВРЕМЯ ХИТА В UNIX-ФОРМАТ
+       h.hitNumber, h.type,
+       trafficSource.source, trafficSource.medium, device.deviceCategory, 
+       h.eventInfo.eventCategory, h.eventInfo.eventAction, h.eventInfo.eventLabel, 
+       CASE
+           WHEN STRPOS(h.page.pagePath,"?")>0 THEN REPLACE(SUBSTR(h.page.pagePath,0,STRPOS(h.page.pagePath,"?")-1),"//","/")
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"seg_") THEN REPLACE(SPLIT(h.page.pagePath,"seg_")[OFFSET (0)],"//","/")
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"//") THEN REPLACE(h.page.pagePath,"//","/")
+           ELSE h.page.pagePath
+       END AS pagePath
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h, PERIOD
+WHERE date BETWEEN REPLACE(CAST(PERIOD.StartDate AS STRING),"-","") AND REPLACE(CAST(PERIOD.EndDate AS STRING),"-","")
+) AS t1
+WHERE sessionId IS NOT NULL AND REGEXP_CONTAINS(eventCategory,R"Interaction form$|Interaction: Form") AND NOT REGEXP_CONTAINS(pagePath,R".*test.*")
+      AND REGEXP_CONTAINS(eventLabel,R'Context:deliveryType')# AND REGEXP_CONTAINS(eventLabel,R'Product:DC')
+GROUP BY date, fullVisitorId, sessionId, visitNumber, visitStartTime, timeHit, hitNumber,	type,	source,	medium,	deviceCategory,	eventCategory, eventAction, eventLabel,	pagePath
+) AS t2
+WHERE ROW_N=ROW_C
+)
+
+
+
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+-----------------------------------------------            START QUERY           ----------------------------------------------
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+
+#select *
+#from (
+SELECT MAIN_DATA.*,
+       IF(EVENTS_deliveryType.deliveryType IS NULL,NULL,EVENTS_deliveryType.deliveryType) AS deliveryType
+FROM (       
+SELECT MAIN_DATA.*,
+       IF(EVENTS_promoCode.POS IS NULL,NULL,EVENTS_promoCode.POS) AS promoCode,
+       IF(EVENTS_promoCode.POS IS NULL,'not','yes') AS promoCode_Flag
+FROM (
+SELECT MAIN_DATA.*,
+       IF(ISSUES_CRM.LeadID IS NULL,0,1) AS Issues
+FROM (
+SELECT MAIN_DATA.*,
+       IF(QLEADS_CRM.LeadID IS NULL,0,1) AS QLeads
+FROM (
+SELECT *,
+       1 AS Sessions,
+       IF(Lead_Product<>'Not sale',1,0) AS Leads
+FROM (
+SELECT date, hitNumber,	sessionBQ, source, medium, campaign, keyword,	content, Entrance_pagePath,
+       CASE
+           WHEN REGEXP_CONTAINS(Entrance_pagePath,R'^\/promo\/') THEN 'PROMO'
+           ELSE 'SITE'
+       END AS URI_Section,
+       `raiffeisen-owox.RB_DS_RUAKBP5.getPRODUCT_by_SEND_OK` (Lead_Type) AS Lead_Product,
+       Lead_Type, OrderID, Entrance_Goal      
+FROM (
+SELECT date, hitNumber, sessionBQ, source,	medium,	campaign, keyword, content, Entrance_pagePath,# EXCEPT(source,	medium,	campaign, keyword, content,)
+       CASE
+           WHEN Lead_Type IS NULL AND eventAction IS NULL THEN NULL
+           WHEN Lead_Type IS NULL AND eventAction IS NOT NULL THEN eventAction
+           WHEN Lead_Type IS NOT NULL AND eventAction IS NULL THEN Lead_Type
+           WHEN Lead_Type IS NOT NULL AND eventAction IS NOT NULL AND OrderID=eventLabel THEN eventAction
+           ELSE 'DELETE'
+       END AS Lead_Type,
+       CASE
+           WHEN Lead_Type IS NULL AND eventAction IS NOT NULL THEN eventLabel
+           WHEN Lead_Type IS NOT NULL AND eventAction IS NULL THEN OrderID
+           ELSE OrderID
+        END AS OrderID,
+       Entrance_Goal    
+FROM (
+SELECT SESSIONS.*,
+       LEADS_classic.eventAction, LEADS_classic.eventLabel, LEADS_classic.Entrance_Goal
+FROM (
+SELECT SESSIONS.*,
+       LEADS_protocol.eventAction AS Lead_Type, LEADS_protocol.eventLabel AS OrderID
+FROM (
+SELECT *
+FROM SESSIONS_GA
+) AS SESSIONS
+LEFT JOIN (
+SELECT * #EXCEPT(hitNumber)
+FROM LEADID_GA_protocol
+) AS LEADS_protocol
+ON SESSIONS.sessionBQ=LEADS_protocol.sessionBQ
+) AS SESSIONS
+LEFT JOIN (
+SELECT * #EXCEPT(hitNumber)
+FROM LEADID_GA_classic
+) AS LEADS_classic
+ON SESSIONS.sessionBQ=LEADS_classic.sessionBQ
+) AS t1
+##WHERE REGEXP_CONTAINS(sessionBQ,R'7329564260068652152_1607103607|6933238151304525889_1605806081|7464737300463106098_1605777459|7307534728561826502_1606556364|317326371711582192_1606123504|3717839420918422767_1607032048')
+) AS t2 WHERE NOT REGEXP_CONTAINS(Lead_Type,'DELETE') OR Lead_Type IS NULL
+) AS t3 #where orderID='MLO211120000255281'
+) AS MAIN_DATA
+LEFT JOIN (
+SELECT *
+FROM QLEADS_CRM
+) AS QLEADS_CRM
+ON MAIN_DATA.OrderID=QLEADS_CRM.LeadID
+) AS MAIN_DATA
+LEFT JOIN (
+SELECT *
+FROM ISSUES_CRM
+) AS ISSUES_CRM
+ON MAIN_DATA.OrderID=ISSUES_CRM.LeadID
+) AS MAIN_DATA
+LEFT JOIN (
+SELECT *
+FROM EVENTS_promoCode
+) AS EVENTS_promoCode
+ON MAIN_DATA.sessionBQ=EVENTS_promoCode.sessionBQ
+) AS MAIN_DATA
+LEFT JOIN (
+SELECT *
+FROM EVENTS_deliveryType
+) AS EVENTS_deliveryType
+ON MAIN_DATA.sessionBQ=EVENTS_deliveryType.sessionId 
+   AND MAIN_DATA.Entrance_Goal=EVENTS_deliveryType.pagePath
+#) as t where deliveryType is not null
+
+#SELECT * #EXCEPT(hitNumber)
+#FROM LEADID_GA_classic
+##WHERE sessionBQ='1000041612730853865_1607705506'
+##GROUP BY DATE 
+##ORDER BY sessionBQ, date, hitNumber
