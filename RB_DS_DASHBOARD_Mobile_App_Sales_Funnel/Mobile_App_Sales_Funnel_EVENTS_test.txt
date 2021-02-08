@@ -1,0 +1,732 @@
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+-----------------------------------------------         BUILDING TABLES          ----------------------------------------------
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+WITH PERIOD AS (
+SELECT '20180101' AS StartDate,
+       REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","") AS FinishDate
+--       '20191007'AS FinishDate
+),
+FUNNEL_EVENT AS (
+SELECT ['BE_CLIENT_BUTTON','FORM_DC_NTB_START_TYPING',
+        'FORM_DC_NTB_SEND_OTP','FORM_DC_NTB_VERIFY_OTP',
+        'FORM_DC_NTB_SEND_PASSPORT_DATA','FORM_DC_NTB_SUBMIT_LEAD'] AS EVENT
+),
+DATA_INSTALL_ANDROID AS ( 
+SELECT DATE(TIMESTAMP(event_time)) AS date,
+       advertising_id, af_ad_type, af_channel, af_siteid, media_source, campaign, attributed_touch_type,
+       event_name,
+       '' AS LEADID,
+       platform, device_category,	device_type
+FROM (
+SELECT advertising_id, af_ad_type, af_channel, af_siteid, attributed_touch_type,
+       campaign, media_source, event_name, event_value, event_time, platform, device_category, device_type
+FROM `raiffeisen-owox.OWOXBI_TRANSFER_APPSFLYER.android_events` 
+WHERE event_name='install' 
+) AS t1
+),
+DATA_INSTALL_IOS AS ( 
+SELECT DATE(TIMESTAMP(event_time)) AS date,
+       idfa, af_ad_type, af_channel, af_siteid, media_source, campaign, attributed_touch_type,
+       event_name,
+       '' AS LEADID,
+       platform, device_category,	device_type
+FROM (
+SELECT idfa, af_ad_type, af_channel, af_siteid, attributed_touch_type,
+       campaign, media_source, event_name, event_value, event_time, platform, device_category, device_type
+FROM `raiffeisen-owox.OWOXBI_TRANSFER_APPSFLYER.ios_events` 
+WHERE event_name='install' 
+) AS t1
+),
+DATA_EVENT_ANDROID AS (
+SELECT DATE(TIMESTAMP(event_time)) AS date,
+       advertising_id, af_ad_type, af_channel, af_siteid, media_source, campaign, attributed_touch_type,
+       event_name, 
+       CASE 
+           WHEN event_name='FORM_DC_NTB_SUBMIT_LEAD' AND REGEXP_CONTAINS(event_value,R'Value|value')
+                THEN REPLACE(REPLACE(SPLIT(event_value,':')[OFFSET (1)],'"',''),'}','')
+           ELSE ''
+       END AS LEADID,
+       platform, device_category,	device_type     
+FROM (
+SELECT advertising_id, af_ad_type, af_channel, af_siteid, attributed_touch_type,
+       campaign, media_source, 
+       event_name, event_value, 
+       event_time, platform, device_category, device_type
+FROM `raiffeisen-owox.OWOXBI_TRANSFER_APPSFLYER.android_events` 
+WHERE event_name IN (SELECT EVENT FROM FUNNEL_EVENT, UNNEST(EVENT) AS EVENT)
+) AS t1
+),
+DATA_EVENT_IOS AS (
+SELECT DATE(TIMESTAMP(event_time)) AS date,
+       idfa, af_ad_type, af_channel, af_siteid, media_source, campaign, attributed_touch_type,
+       event_name, 
+       CASE 
+           WHEN event_name='FORM_DC_NTB_SUBMIT_LEAD' AND REGEXP_CONTAINS(event_value,R'Value|value')
+                THEN REPLACE(REPLACE(SPLIT(event_value,':')[OFFSET (1)],'"',''),'}','')
+           ELSE ''
+       END AS LEADID,
+       platform, device_category,	device_type     
+FROM (
+SELECT idfa, af_ad_type, af_channel, af_siteid, attributed_touch_type,
+       campaign, media_source, 
+       event_name, event_value, 
+       event_time, platform, device_category, device_type
+FROM `raiffeisen-owox.OWOXBI_TRANSFER_APPSFLYER.ios_events` 
+WHERE event_name IN (SELECT EVENT FROM FUNNEL_EVENT, UNNEST(EVENT) AS EVENT)
+) AS t1
+),
+DATA_CRM_LEAD AS (
+SELECT *         
+FROM (
+---------------------------------------------------------------------------------------------------------------------------
+--УНИКАЛИЗИРУЕМ ПО LEADID
+SELECT EXTRACT(MONTH FROM Date) AS Month, EXTRACT(YEAR FROM Date) AS Year, Date, SPLIT(LeadID,"_")[OFFSET (0)] AS LeadID, ProductLine, Product, Medium, 
+       UTM_CAMPAIGN AS Campaign, utm_term AS Keyword, NTB, VB, BrandFormance,
+       StatusLead, ApprovalLead
+FROM (
+SELECT Date, LeadID, ProductLine, Product, Medium, UTM_CAMPAIGN, utm_term, NTB, VB, BrandFormance,
+       StatusLead, ApprovalLead,
+       ROW_NUMBER() OVER (PARTITION BY LeadID) AS ROW
+FROM (
+---------------------------------------------------------------------------------------------------------------------------
+--ОБРАБОТКА ЛИДОВ С LEADID       
+SELECT DATE(LeadDate) AS Date, leadid AS LeadID, PRODUCT_LINE AS ProductLine, 
+       `raiffeisen-owox.RB_DS_RUAKBP5.getPRODUCT_by_CRM` (PRODUCT_LINE) AS Product,       
+       UTM_MEDIUM AS Medium, UTM_CAMPAIGN, utm_term,
+       NTB, STATUS AS StatusLead, APPROVAL AS ApprovalLead,
+       CASE 
+           WHEN REGEXP_CONTAINS(UTM_CAMPAIGN,R".*\|vb\|.*|.*\|vb|_vb|.*vb\||vb%|7Cvb|7cvb") THEN "TRUE"           
+       ELSE 'FALSE' END AS VB,
+          CASE 
+              WHEN REGEXP_CONTAINS(UTM_CAMPAIGN,R".*\|bf\|.*|_bf|brandfrm") THEN "TRUE"
+              ELSE "FALSE"
+          END AS BrandFormance       
+FROM `raiffeisen-owox.Orders_CRM.CRM_orders`
+WHERE --UTM_MEDIUM ='cpc'
+--      AND REGEXP_MATCH(UTM_SOURCE,R'yandex$|google$|mytarget|facebook|dbm|astraone')      
+--      AND CAST(DATE(LeadDate) AS STRING) BETWEEN '2018-11-01' AND '2018-11-30'
+      --AND 
+      CAST(DATE(LeadDate) AS STRING) BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'-01-01') AND CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING)
+--      AND REGEXP_CONTAINS(PRODUCT_LINE,r'Personal Loans')
+      AND leadid IS NOT NULL
+---------------------------------------------------------------------------------------------------------------------------
+UNION ALL
+---------------------------------------------------------------------------------------------------------------------------
+--ОБРАБОТКА ЛИДОВ БЕЗ LEADID
+SELECT Date, CAST(LeadID AS STRING) AS LeadID, ProductLine, Product, Medium, UTM_CAMPAIGN, utm_term, NTB, StatusLead, ApprovalLead, VB, BrandFormance
+FROM (       
+SELECT Date,
+       ROW_NUMBER() OVER (PARTITION BY LeadID) AS LeadID,
+       ProductLine, Product, Medium, UTM_CAMPAIGN, utm_term, NTB, StatusLead, ApprovalLead, VB, BrandFormance
+FROM (       
+SELECT DATE(LeadDate) AS Date, leadid AS LeadID, PRODUCT_LINE AS ProductLine, 
+       `raiffeisen-owox.RB_DS_RUAKBP5.getPRODUCT_by_CRM` (PRODUCT_LINE) AS Product,  
+       CASE 
+           WHEN REGEXP_CONTAINS(UTM_CAMPAIGN,r'.*\|vb\|.*|.*\|vb|_vb|.*vb\||vb%|7Cvb|7cvb') THEN 'TRUE'
+       ELSE 'FALSE' END AS VB,
+          CASE 
+              WHEN REGEXP_CONTAINS(UTM_CAMPAIGN,R".*\|bf\|.*|_bf|brandfrm") THEN "TRUE"
+              ELSE "FALSE"
+          END AS BrandFormance,         
+       UTM_MEDIUM AS Medium, UTM_CAMPAIGN, utm_term,
+       NTB, STATUS AS StatusLead, APPROVAL AS ApprovalLead 
+FROM `raiffeisen-owox.Orders_CRM.CRM_orders`
+WHERE --UTM_MEDIUM ='cpc'
+--      AND REGEXP_MATCH(UTM_SOURCE,R'yandex$|google$|mytarget|facebook|dbm|astraone')      
+--      AND CAST(DATE(LeadDate) AS STRING) BETWEEN '2018-11-01' AND '2018-11-30'
+      --AND 
+      CAST(DATE(LeadDate) AS STRING) BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'-01-01') AND CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING)
+--      AND REGEXP_CONTAINS(PRODUCT_LINE,r'Personal Loans')
+      AND leadid IS NULL
+) AS t0
+) AS t1
+---------------------------------------------------------------------------------------------------------------------------
+) AS t1
+) AS t2
+WHERE ROW=1
+---------------------------------------------------------------------------------------------------------------------------
+) AS t1
+),
+DATA_CRM_QLEADS AS ( --<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+---------------------------------------------------------------------------------------------------------------------------
+--ОСТАВЛЯЕМ ТОЛЬКО КУЛИДЫ
+SELECT *
+FROM (
+SELECT *,
+       `raiffeisen-owox.RB_DS_RUAKBP5.getQLEAD_by_CRM` (Product,StatusLead,ApprovalLead) AS QLead           
+FROM (
+---------------------------------------------------------------------------------------------------------------------------
+--УНИКАЛИЗИРУЕМ ПО LEADID
+SELECT EXTRACT(MONTH FROM Date) AS Month, EXTRACT(YEAR FROM Date) AS Year, Date, SPLIT(LeadID,"_")[OFFSET (0)] AS LeadID, ProductLine, Product, Medium, 
+       UTM_CAMPAIGN AS Campaign, utm_term AS Keyword, NTB, VB, BrandFormance,
+       StatusLead, ApprovalLead
+FROM (
+SELECT Date, LeadID, ProductLine, Product, Medium, UTM_CAMPAIGN, utm_term, NTB, VB, BrandFormance,
+       StatusLead, ApprovalLead,
+       ROW_NUMBER() OVER (PARTITION BY LeadID) AS ROW
+FROM (
+---------------------------------------------------------------------------------------------------------------------------
+--ОБРАБОТКА ЛИДОВ С LEADID       
+SELECT DATE(LeadDate) AS Date, leadid AS LeadID, PRODUCT_LINE AS ProductLine, 
+       `raiffeisen-owox.RB_DS_RUAKBP5.getPRODUCT_by_CRM` (PRODUCT_LINE) AS Product,       
+       UTM_MEDIUM AS Medium, UTM_CAMPAIGN, utm_term,
+       NTB, STATUS AS StatusLead, APPROVAL AS ApprovalLead,
+       CASE 
+           WHEN REGEXP_CONTAINS(UTM_CAMPAIGN,R".*\|vb\|.*|.*\|vb|_vb|.*vb\||vb%|7Cvb|7cvb") THEN "TRUE"           
+       ELSE 'FALSE' END AS VB,
+          CASE 
+              WHEN REGEXP_CONTAINS(UTM_CAMPAIGN,R".*\|bf\|.*|_bf|brandfrm") THEN "TRUE"
+              ELSE "FALSE"
+          END AS BrandFormance       
+FROM `raiffeisen-owox.Orders_CRM.CRM_orders`
+WHERE --UTM_MEDIUM ='cpc'
+--      AND REGEXP_MATCH(UTM_SOURCE,R'yandex$|google$|mytarget|facebook|dbm|astraone')      
+--      AND CAST(DATE(LeadDate) AS STRING) BETWEEN '2018-11-01' AND '2018-11-30'
+      --AND 
+      CAST(DATE(LeadDate) AS STRING) BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'-01-01') AND CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING)
+--      AND REGEXP_CONTAINS(PRODUCT_LINE,r'Personal Loans')
+      AND leadid IS NOT NULL
+---------------------------------------------------------------------------------------------------------------------------
+UNION ALL
+---------------------------------------------------------------------------------------------------------------------------
+--ОБРАБОТКА ЛИДОВ БЕЗ LEADID
+SELECT Date, CAST(LeadID AS STRING) AS LeadID, ProductLine, Product, Medium, UTM_CAMPAIGN, utm_term, NTB, StatusLead, ApprovalLead, VB, BrandFormance
+FROM (       
+SELECT Date,
+       ROW_NUMBER() OVER (PARTITION BY LeadID) AS LeadID,
+       ProductLine, Product, Medium, UTM_CAMPAIGN, utm_term, NTB, StatusLead, ApprovalLead, VB, BrandFormance
+FROM (       
+SELECT DATE(LeadDate) AS Date, leadid AS LeadID, PRODUCT_LINE AS ProductLine, 
+       `raiffeisen-owox.RB_DS_RUAKBP5.getPRODUCT_by_CRM` (PRODUCT_LINE) AS Product,  
+       CASE 
+           WHEN REGEXP_CONTAINS(UTM_CAMPAIGN,r'.*\|vb\|.*|.*\|vb|_vb|.*vb\||vb%|7Cvb|7cvb') THEN 'TRUE'
+       ELSE 'FALSE' END AS VB,
+          CASE 
+              WHEN REGEXP_CONTAINS(UTM_CAMPAIGN,R".*\|bf\|.*|_bf|brandfrm") THEN "TRUE"
+              ELSE "FALSE"
+          END AS BrandFormance,         
+       UTM_MEDIUM AS Medium, UTM_CAMPAIGN, utm_term,
+       NTB, STATUS AS StatusLead, APPROVAL AS ApprovalLead 
+FROM `raiffeisen-owox.Orders_CRM.CRM_orders`
+WHERE --UTM_MEDIUM ='cpc'
+--      AND REGEXP_MATCH(UTM_SOURCE,R'yandex$|google$|mytarget|facebook|dbm|astraone')      
+--      AND CAST(DATE(LeadDate) AS STRING) BETWEEN '2018-11-01' AND '2018-11-30'
+      --AND 
+      CAST(DATE(LeadDate) AS STRING) BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'-01-01') AND CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING)
+--      AND REGEXP_CONTAINS(PRODUCT_LINE,r'Personal Loans')
+      AND leadid IS NULL
+) AS t0
+) AS t1
+---------------------------------------------------------------------------------------------------------------------------
+) AS t1
+) AS t2
+WHERE ROW=1
+---------------------------------------------------------------------------------------------------------------------------
+) AS t1
+) AS t2
+WHERE QLead = 'QLead'
+---------------------------------------------------------------------------------------------------------------------------
+),
+DATA_CRM_ISSUES AS ( --<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+---------------------------------------------------------------------------------------------------------------------------
+--ОСТАВЛЯЕМ ТОЛЬКО КУЛИДЫ
+SELECT *
+FROM (
+SELECT *,
+       `raiffeisen-owox.RB_DS_RUAKBP5.getISSUE_by_CRM` (Product,StatusLead,ApprovalLead) AS Issue             
+FROM (
+---------------------------------------------------------------------------------------------------------------------------
+--УНИКАЛИЗИРУЕМ ПО LEADID
+SELECT EXTRACT(MONTH FROM Date) AS Month, EXTRACT(YEAR FROM Date) AS Year, Date, SPLIT(LeadID,"_")[OFFSET (0)] AS LeadID, ProductLine, Product, Medium, 
+       UTM_CAMPAIGN AS Campaign, utm_term AS Keyword, NTB, VB, BrandFormance,
+       StatusLead, ApprovalLead
+FROM (
+SELECT Date, LeadID, ProductLine, Product, Medium, UTM_CAMPAIGN, utm_term, NTB, VB, BrandFormance,
+       StatusLead, ApprovalLead,
+       ROW_NUMBER() OVER (PARTITION BY LeadID) AS ROW
+FROM (
+---------------------------------------------------------------------------------------------------------------------------
+--ОБРАБОТКА ЛИДОВ С LEADID       
+SELECT DATE(LeadDate) AS Date, leadid AS LeadID, PRODUCT_LINE AS ProductLine, 
+       `raiffeisen-owox.RB_DS_RUAKBP5.getPRODUCT_by_CRM` (PRODUCT_LINE) AS Product,        
+       UTM_MEDIUM AS Medium, UTM_CAMPAIGN, utm_term,
+       NTB, STATUS AS StatusLead, APPROVAL AS ApprovalLead,
+       CASE 
+           WHEN REGEXP_CONTAINS(UTM_CAMPAIGN,R".*\|vb\|.*|.*\|vb|_vb|.*vb\||vb%|7Cvb|7cvb") THEN "TRUE"           
+       ELSE 'FALSE' END AS VB,
+          CASE 
+              WHEN REGEXP_CONTAINS(UTM_CAMPAIGN,R".*\|bf\|.*|_bf|brandfrm") THEN "TRUE"
+              ELSE "FALSE"
+          END AS BrandFormance       
+FROM `raiffeisen-owox.Orders_CRM.CRM_orders`
+WHERE --UTM_MEDIUM ='cpc'
+--      AND REGEXP_MATCH(UTM_SOURCE,R'yandex$|google$|mytarget|facebook|dbm|astraone')      
+--      AND CAST(DATE(LeadDate) AS STRING) BETWEEN '2018-11-01' AND '2018-11-30'
+      --AND
+      CAST(DATE(LeadDate) AS STRING) BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'-01-01') AND CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING)
+--      AND REGEXP_CONTAINS(PRODUCT_LINE,r'Personal Loans')
+      AND leadid IS NOT NULL
+---------------------------------------------------------------------------------------------------------------------------
+UNION ALL
+---------------------------------------------------------------------------------------------------------------------------
+--ОБРАБОТКА ЛИДОВ БЕЗ LEADID
+SELECT Date, CAST(LeadID AS STRING) AS LeadID, ProductLine, Product, Medium, UTM_CAMPAIGN, utm_term, NTB, StatusLead, ApprovalLead, VB, BrandFormance
+FROM (       
+SELECT Date,
+       ROW_NUMBER() OVER (PARTITION BY LeadID) AS LeadID,
+       ProductLine, Product, Medium, UTM_CAMPAIGN, utm_term, NTB, StatusLead, ApprovalLead, VB, BrandFormance
+FROM (       
+SELECT DATE(LeadDate) AS Date, leadid AS LeadID, PRODUCT_LINE AS ProductLine, 
+       `raiffeisen-owox.RB_DS_RUAKBP5.getPRODUCT_by_CRM` (PRODUCT_LINE) AS Product,  
+       CASE 
+           WHEN REGEXP_CONTAINS(UTM_CAMPAIGN,r'.*\|vb\|.*|.*\|vb|_vb|.*vb\||vb%|7Cvb|7cvb') THEN 'TRUE'
+       ELSE 'FALSE' END AS VB,
+          CASE 
+              WHEN REGEXP_CONTAINS(UTM_CAMPAIGN,R".*\|bf\|.*|_bf|brandfrm") THEN "TRUE"
+              ELSE "FALSE"
+          END AS BrandFormance,         
+       UTM_MEDIUM AS Medium, UTM_CAMPAIGN, utm_term,
+       NTB, STATUS AS StatusLead, APPROVAL AS ApprovalLead 
+FROM `raiffeisen-owox.Orders_CRM.CRM_orders`
+WHERE --UTM_MEDIUM ='cpc'
+--      AND REGEXP_MATCH(UTM_SOURCE,R'yandex$|google$|mytarget|facebook|dbm|astraone')      
+--      AND CAST(DATE(LeadDate) AS STRING) BETWEEN '2018-11-01' AND '2018-11-30'
+      --AND
+      CAST(DATE(LeadDate) AS STRING) BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'-01-01') AND CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING)
+--      AND REGEXP_CONTAINS(PRODUCT_LINE,r'Personal Loans')
+      AND leadid IS NULL
+) AS t0
+) AS t1
+---------------------------------------------------------------------------------------------------------------------------
+) AS t1
+) AS t2
+WHERE ROW=1
+---------------------------------------------------------------------------------------------------------------------------
+) AS t1
+) AS t2
+WHERE Issue = 'Issue'
+----------------------------------------------------------------------------------------------------------------------------
+),
+DATA_AF_LEADID AS (
+SELECT *
+FROM (
+SELECT advertising_id, idfv, appsflyer_id, event_time, TIMESTAMP_TRUNC(TIMESTAMP(event_time),SECOND) AS join_time,
+       event_name, event_value,
+       CASE 
+           WHEN event_name='FORM_DC_NTB_SUBMIT_LEAD' AND REGEXP_CONTAINS(event_value,R'Value|value')
+                THEN REPLACE(REPLACE(SPLIT(event_value,':')[OFFSET (1)],'"',''),'}','')
+           ELSE ''
+       END AS LEADID    
+FROM `raiffeisen-owox.OWOXBI_TRANSFER_APPSFLYER.android_events` 
+WHERE event_name='FORM_DC_NTB_SUBMIT_LEAD'
+UNION ALL
+SELECT idfa, idfv, appsflyer_id, event_time, TIMESTAMP_TRUNC(TIMESTAMP(event_time),SECOND) AS join_time,
+       event_name, event_value,
+       CASE 
+           WHEN event_name='FORM_DC_NTB_SUBMIT_LEAD' AND REGEXP_CONTAINS(event_value,R'Value|value')
+                THEN REPLACE(REPLACE(SPLIT(event_value,':')[OFFSET (1)],'"',''),'}','')
+           ELSE ''
+       END AS LEADID
+FROM `raiffeisen-owox.OWOXBI_TRANSFER_APPSFLYER.ios_events` 
+WHERE event_name='FORM_DC_NTB_SUBMIT_LEAD'
+) AS t1 
+--WHERE LEADID='1'
+),
+DATA_WEB_LEADS AS (
+SELECT date, clientId, sessionId, visitStartTime, time, 
+       TIMESTAMP_SECONDS(visitStartTime) AS UTC_Start,
+       TIMESTAMP_SECONDS(CAST(ROUND((visitStartTime*1000+time)/1000,0) AS INT64)) AS UTC_Hit_SECONDS,         
+--         TIMESTAMP_MILLIS(visitStartTime*1000+h.time) AS UTC_Hit_MILLIS,
+       TIMESTAMP_TRUNC(TIMESTAMP_SECONDS(CAST(ROUND((visitStartTime*1000+time)/1000,0) AS INT64)), MINUTE) AS UTC_Hit_SECONDS_TRUNC,       
+       deviceCategory, mobileDeviceBranding, mobileDeviceModel,
+       eventCategory, eventAction,
+       CASE
+           WHEN REGEXP_CONTAINS(eventLabel,'order:') THEN 
+                IF(REGEXP_CONTAINS(REPLACE(SUBSTR(eventLabel,STRPOS(eventLabel,"order:")),"order:",""),R'_'),
+                   SPLIT(REPLACE(SUBSTR(eventLabel,STRPOS(eventLabel,"order:")),"order:",""),'_')[OFFSET (0)],
+                   REPLACE(SUBSTR(eventLabel,STRPOS(eventLabel,"order:")),"order:",""))
+           ELSE NULL
+       END AS eventLabel,
+       ProductGoals, pagePath
+FROM (       
+SELECT date, clientId, CONCAT(fullVisitorId,"_",CAST(visitStartTime AS STRING)) AS sessionId,
+       visitStartTime, h.time, device.deviceCategory, device.mobileDeviceBranding, device.mobileDeviceModel,
+       h.eventInfo.eventCategory, h.eventInfo.eventAction, h.eventInfo.eventLabel,
+       `raiffeisen-owox.RB_DS_RUAKBP5.getPRODUCT_by_SEND_OK` (h.eventInfo.eventAction) AS ProductGoals,    
+       CASE
+           WHEN STRPOS(h.page.pagePath,"?")>0 THEN REPLACE(SUBSTR(h.page.pagePath,0,STRPOS(h.page.pagePath,"?")-1),"//","/")
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"seg_") THEN REPLACE(SPLIT(h.page.pagePath,"seg_")[OFFSET (0)],"//","/")
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"//") THEN REPLACE(h.page.pagePath,"//","/")
+           ELSE h.page.pagePath
+       END AS pagePath       
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h, UNNEST(h.experiment) AS exp, PERIOD
+WHERE
+      _TABLE_SUFFIX BETWEEN PERIOD.StartDate AND PERIOD.FinishDate
+      AND REGEXP_CONTAINS(h.eventInfo.eventCategory,R"send_ok|accounting-send_ok") --!!!! ADD |accounting-send_ok
+      AND REGEXP_CONTAINS(h.page.pagePath,R'^\/promo\/vsesrazu-dc\/mob/$')
+GROUP BY date, clientId, sessionId, visitStartTime, time, deviceCategory, mobileDeviceBranding, mobileDeviceModel,
+         eventCategory, eventAction, eventLabel, pagePath 
+) AS t1
+WHERE ProductGoals<>"Not sale" AND sessionId IS NOT NULL 
+),
+DATA_FIND_LOOSE_LEAD AS (
+SELECT *
+FROM (
+SELECT *,
+       IF(join_time>=UTC_Start AND join_time<=UTC_Hit_Max_SECONDS,'SAVE','DEL') AS Clean
+FROM (
+SELECT t1.*,
+       t2.UTC_Start, t2.UTC_Hit_SECONDS, TIMESTAMP_SUB(t2.UTC_Hit_SECONDS, INTERVAL -24 HOUR) AS UTC_Hit_Max_SECONDS, t2.eventLabel
+FROM (
+SELECT *, 
+FROM DATA_AF_LEADID
+WHERE LEADID='1'
+) AS t1
+CROSS JOIN (
+SELECT *
+FROM DATA_WEB_LEADS
+) AS t2
+) AS t3 
+) AS t4 WHERE Clean='SAVE'
+ORDER BY appsflyer_id, join_time
+),
+DATA_AF_DAILY_REPORT AS (
+SELECT CAST(date AS DATE) AS date, media_source, campaign, 'android' AS platform,
+       SUM(Impressions) AS Impressions,
+       SUM(Clicks) AS Clicks,
+       0 AS Installs,
+       0 AS Lead,
+       0 AS QLead,
+       0 AS Issue,
+       SUM(Total_Cost) AS Total_Cost       
+FROM `raiffeisen-owox.RB_DS_TRANSFER_APPSFLYER.Pull_API_Daily_Report_Android`
+GROUP BY date, media_source, campaign
+UNION ALL
+SELECT CAST(date AS DATE) AS date, media_source, campaign, 'ios' AS platform,
+       SUM(Impressions) AS Impressions,
+       SUM(Clicks) AS Clicks,
+       0 AS Installs,
+       0 AS Lead,
+       0 AS QLead,
+       0 AS Issue,
+       SUM(Total_Cost) AS Total_Cost       
+FROM `raiffeisen-owox.RB_DS_TRANSFER_APPSFLYER.Pull_API_Daily_Report_iOS`
+GROUP BY date, media_source, campaign
+),
+DASHBOARD_DATA_BASIC AS (
+---------------------------------------------------------------------------------------------------------------------------
+-- BASE DATA
+SELECT date, 
+       af_ad_type, af_channel, af_siteid,	media_source,	campaign, attributed_touch_type,
+       event_name, platform, device_category,	
+       CASE
+           WHEN platform='android' THEN SPLIT(device_type,'::')[OFFSET (0)] 
+           WHEN platform='ios' AND REGEXP_CONTAINS(device_type,R'iPhone') THEN 'iPhone'
+           WHEN platform='ios' AND REGEXP_CONTAINS(device_type,R'iPad') THEN 'iPad'
+           ELSE 'Other'
+       END AS device_vendor, 
+       CASE
+           WHEN platform='android' THEN SPLIT(device_type,'::')[OFFSET (1)] 
+           WHEN platform='ios' AND REGEXP_CONTAINS(device_type,R'iPhone') THEN REPLACE(device_type,'iPhone','')
+           WHEN platform='ios' AND REGEXP_CONTAINS(device_type,R'iPad') THEN REPLACE(device_type,'iPad','')
+           ELSE 'Other'        
+       END AS device_model,
+       NTB,
+       SUM(Count) AS Count,
+       SUM(Installs) AS Installs,
+       SUM(Lead) AS Lead,
+       SUM(QLead) AS QLead,
+       SUM(Issue) AS Issue
+FROM ( 
+
+SELECT *, '' AS NTB, 1 AS Count, 1 AS Installs, 0 AS Lead, 0 AS QLead, 0 AS Issue
+FROM DATA_INSTALL_ANDROID
+UNION ALL
+SELECT *, '' AS NTB, 1 AS Count, 1 AS Installs, 0 AS Lead, 0 AS QLead, 0 AS Issue
+FROM DATA_INSTALL_IOS
+
+UNION ALL
+
+SELECT t3.*,
+       IF(t4.Issue IS NULL,0,1) AS Issue
+FROM (
+SELECT t1.*,
+       1 AS Count,
+       0 AS Installs,
+       IF(t1.event_name='FORM_DC_NTB_SUBMIT_LEAD',1,0) AS Lead,
+       IF(t2.QLead IS NULL,0,1) AS QLead
+FROM (       
+
+
+SELECT t1.*,
+       IF(t2.NTB IS NULL,'',t2.NTB) AS NTB
+FROM (
+SELECT *
+FROM DATA_EVENT_ANDROID
+UNION ALL
+SELECT *
+FROM DATA_EVENT_IOS
+) AS t1
+LEFT JOIN (
+SELECT *
+FROM DATA_CRM_LEAD
+) AS t2
+ON t1.LEADID=t2.LeadID
+
+) AS t1
+LEFT JOIN (
+SELECT *
+FROM DATA_CRM_QLEADS
+) AS t2
+ON t1.LEADID=t2.LeadID
+) AS t3
+LEFT JOIN (
+SELECT *
+FROM DATA_CRM_ISSUES
+) AS t4
+ON t3.LEADID=t4.LeadID
+) AS t5
+GROUP BY date, 
+         af_ad_type, af_channel, af_siteid,	media_source,	campaign, attributed_touch_type,
+         event_name, platform, device_category,	device_type, device_vendor, device_model, NTB
+---------------------------------------------------------------------------------------------------------------------------
+),
+DASHBOARD_DATA_FULL_FUNNEL AS (
+SELECT *,
+       0 AS Count, '' AS NTB, 'NULL' AS event_name, 'NULL' AS device_category,	'NULL' AS device_vendor,-- 'NULL' AS device_model, 
+       'FULL_FUNNEL' AS DATA_TYPE
+FROM (       
+---------------------------------------------------------------------------------------------------------------------------
+-- NEED TO CONVERT TO SCHEMA AF DAILY REPORT
+SELECT date, media_source,	campaign, platform,
+       0 AS Impressions,
+       0 AS Clicks,
+       SUM(Installs) AS Installs,
+       SUM(Lead) AS Lead,
+       SUM(QLead) AS QLead,
+       SUM(Issue) AS Issue,
+       0 AS Total_Cost
+FROM (
+---------------------------------------------------------------------------------------------------------------------------
+-- BASE DATA
+SELECT *
+FROM DASHBOARD_DATA_BASIC
+WHERE date <= DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY)
+---------------------------------------------------------------------------------------------------------------------------
+) AS t1
+GROUP BY date, media_source, campaign, platform
+UNION ALL
+SELECT date, media_source,	campaign, platform,
+       SUM(Impressions) AS Impressions,
+       SUM(Clicks) AS Clicks,
+       0 AS Installs,
+       0 AS Lead,
+       0 AS QLead,
+       0 AS Issue,
+       SUM(Total_Cost) AS Total_Cost       
+FROM DATA_AF_DAILY_REPORT
+GROUP BY date, media_source,	campaign, platform
+---------------------------------------------------------------------------------------------------------------------------
+) AS t2
+),
+
+DASHBOARD_DATA_OFFLINE_FUNNEL AS (
+--SELECT date, media_source, campaign, platform, 
+--       Impressions,	Clicks,	Installs,	Lead,	QLead, Issue, Total_Cost,	Count,
+--       NTB,	event_name,	device_category, device_vendor,	DATA_TYPE,
+--       SUM(AGG_Impressions) AS AGG_Impressions,
+--       SUM(AGG_Clicks) AS AGG_Clicks,
+--       SUM(AGG_Installs) AS AGG_Installs,
+--       SUM(AGG_Total_Cost) AS AGG_Total_Cost
+--FROM (
+---------------------------------------------------------------------------------------------------------------------------
+--ADD INSTALL INTO AGG BASE OFFLINE FUNNEL
+--SELECT t6.*,
+--       IF(t7.Installs IS NULL OR NOT (t6.event_name='FORM_DC_NTB_SUBMIT_LEAD'),0,t7.Installs) AS AGG_Installs
+--FROM (       
+---------------------------------------------------------------------------------------------------------------------------
+--ADD COST INTO AGG BASE OFFLINE FUNNEL
+--SELECT date, media_source, campaign, platform, 
+--       Impressions,	Clicks,	Installs,	Lead,	QLead, Issue, Total_Cost,	Count,
+--       NTB,	event_name,	device_category, device_vendor,	DATA_TYPE,
+--       SUM(AGG_Impressions) AS AGG_Impressions,
+--       SUM(AGG_Clicks) AS AGG_Clicks,
+--       SUM(AGG_Total_Cost) AS AGG_Total_Cost       
+--FROM (
+--SELECT t3.*,
+--       IF(t4.Impressions IS NULL OR NOT (t3.event_name='FORM_DC_NTB_SUBMIT_LEAD'),0,t4.Impressions) AS AGG_Impressions,
+--       IF(t4.Clicks IS NULL OR NOT (t3.event_name='FORM_DC_NTB_SUBMIT_LEAD'),0,t4.Clicks) AS AGG_Clicks,         
+--       IF(t4.Total_Cost IS NULL OR NOT (t3.event_name='FORM_DC_NTB_SUBMIT_LEAD'),0,t4.Total_Cost) AS AGG_Total_Cost       
+--FROM (       
+---------------------------------------------------------------------------------------------------------------------------
+--AGG BASE OFFLINE FUNNEL
+--SELECT date, media_source,	campaign, platform,
+--       SUM(Impressions) AS Impressions,
+--       SUM(Clicks) AS Clicks,
+--       SUM(Installs) AS Installs,
+--       SUM(Lead) AS Lead,
+--       SUM(QLead) AS QLead,
+--       SUM(Issue) AS Issue,
+--       SUM(Total_Cost) AS Total_Cost,
+--       SUM(Count) AS Count,
+--       NTB, event_name, device_category,	device_vendor, --device_model, 
+--       DATA_TYPE
+--FROM (
+--SELECT date, media_source,	campaign, platform,
+--       0 AS Impressions,
+--       0 AS Clicks,
+--       Installs,
+--       Lead,
+--       QLead,
+--       Issue,
+--       0 AS Total_Cost,
+--       CASE
+--           WHEN DATA_TYPE='OFFLINE_FUNNEL' AND event_name='install' THEN Installs
+--           WHEN DATA_TYPE='OFFLINE_FUNNEL' AND event_name='FORM_DC_NTB_SUBMIT_LEAD' THEN Lead
+--           WHEN DATA_TYPE='OFFLINE_FUNNEL' AND REGEXP_CONTAINS(event_name,R'FORM_.*|BE_.*') AND NOT event_name='FORM_DC_NTB_SUBMIT_LEAD' THEN 1   
+--           ELSE 0
+--       END AS Count,       
+--       NTB, event_name, device_category,	device_vendor, --device_model, 
+--       DATA_TYPE
+--FROM (
+SELECT date, media_source, campaign, platform,
+       AVG_Impressions AS Impressions,
+       AVG_Clicks AS Clicks,
+       Installs, Lead, QLead,	Issue,
+       AVG_Total_Cost AS Total_Cost,
+       Count,	NTB, event_name, device_category,	device_vendor, DATA_TYPE
+FROM (
+SELECT *,
+       AGG_Impressions*(Installs/IF(AGG_Installs=0,1,AGG_Installs)) AS AVG_Impressions,
+       AGG_Clicks*(Installs/IF(AGG_Installs=0,1,AGG_Installs)) AS AVG_Clicks,  
+       AGG_Total_Cost*(Installs/IF(AGG_Installs=0,1,AGG_Installs)) AS AVG_Total_Cost      
+FROM (
+SELECT date, media_source,	campaign, platform,
+       Impressions, Clicks, Installs, Lead, QLead, Issue, Total_Cost, Count, 
+       NTB, event_name, device_category, device_vendor,-- device_model, 
+       DATA_TYPE,
+       SUM(Installs) OVER (PARTITION BY date, media_source,	campaign, platform) AS AGG_Installs,       
+       SUM(AGG_Impressions) AS AGG_Impressions,
+       SUM(AGG_Clicks) AS AGG_Clicks,
+       SUM(AGG_Total_Cost) AS AGG_Total_Cost
+FROM(
+SELECT t1.*,
+       IF(t1.event_name='install',IF(t2.Impressions IS NULL,0,t2.Impressions),0) AS AGG_Impressions,
+       IF(t1.event_name='install',IF(t2.Clicks IS NULL,0,t2.Clicks),0) AS AGG_Clicks,
+       IF(t1.event_name='install',IF(t2.Total_Cost IS NULL,0,t2.Total_Cost),0) AS AGG_Total_Cost
+FROM (
+---------------------------------------------------------------------------------------------------------------------------
+-- BASE DATA 
+SELECT date, media_source,	campaign, platform,
+       0 AS Impressions,
+       0 AS Clicks,
+       SUM(Installs) AS Installs,
+       SUM(Lead) AS Lead,
+       SUM(QLead) AS QLead,
+       SUM(Issue) AS Issue,
+       0 AS Total_Cost,
+       SUM(Count) AS Count, 
+       NTB, event_name, device_category, device_vendor,-- device_model, 
+       'OFFLINE_FUNNEL' AS DATA_TYPE
+FROM DASHBOARD_DATA_BASIC WHERE date <= DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY)
+GROUP BY date, media_source, campaign, event_name, platform, device_category,	device_vendor, NTB, DATA_TYPE
+---------------------------------------------------------------------------------------------------------------------------
+) AS t1
+LEFT JOIN (
+SELECT *
+FROM DATA_AF_DAILY_REPORT
+) AS t2
+ON t1.date=t2.date AND
+   t1.media_source=t2.media_source AND
+   t1.campaign=t2.campaign AND
+   t1.platform=t2.platform
+) AS t3
+GROUP BY date, media_source,	campaign, platform,
+         Impressions, Clicks, Installs, Lead, QLead, Issue, Total_Cost, Count, 
+         NTB, event_name, device_category, device_vendor,-- device_model, 
+         DATA_TYPE
+) AS t4
+) AS t5
+--) AS t1
+--) AS t2
+--GROUP BY date, media_source,	campaign, platform, NTB, event_name, device_category,	device_vendor, --device_model,
+--         DATA_TYPE
+---------------------------------------------------------------------------------------------------------------------------
+--) AS t3
+--LEFT JOIN (
+--SELECT *
+--FROM DASHBOARD_DATA_FULL_FUNNEL
+--) AS t4
+--ON t3.date=t4.date AND
+--   t3.media_source=t4.media_source AND
+--   t3.campaign=t4.campaign AND
+--   t3.platform=t4.platform
+--) AS t5
+--GROUP BY date, media_source, campaign, platform, 
+--         Impressions,	Clicks,	Installs,	Lead,	QLead, Issue, Total_Cost,	Count,
+--         NTB,	event_name,	device_category, device_vendor,	DATA_TYPE
+---------------------------------------------------------------------------------------------------------------------------   
+--) AS t6
+--LEFT JOIN(
+--SELECT date, media_source, campaign, platform, device_category,	device_vendor, 
+--       SUM(Installs) AS Installs
+--FROM DASHBOARD_DATA_BASIC WHERE event_name='install' AND date <= DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY)
+--GROUP BY date, media_source, campaign, platform, device_category,	device_vendor
+--) AS t7
+--ON t6.date=t7.date AND
+--   t6.media_source=t7.media_source AND
+--   t6.campaign=t7.campaign AND
+--   t6.platform=t7.platform
+--) AS t8
+--GROUP BY date, media_source, campaign, platform, 
+--       Impressions,	Clicks,	Installs,	Lead,	QLead, Issue, Total_Cost,	Count,
+--       NTB,	event_name,	device_category, device_vendor,	DATA_TYPE
+---------------------------------------------------------------------------------------------------------------------------   
+--UNION ALL
+--SELECT date, media_source, campaign, platform,
+--       0 AS Impressions,
+--       0 AS Clicks,
+--       Installs,
+--       Lead,
+--       QLead,
+--       Issue,
+--       0 AS Total_Cost,
+--       NTB, 'QLead' AS event_name, device_category, device_vendor, device_model, 'OFFLINE_FUNNEL' AS DATA_TYPE      
+--FROM DASHBOARD_DATA_BASIC
+--WHERE QLead<>0
+--UNION ALL
+--SELECT date, media_source, campaign, platform,
+--       0 AS Impressions,
+--       0 AS Clicks,
+--       Installs,
+--       Lead,
+--       QLead,
+--       Issue,
+--       0 AS Total_Cost,
+--       NTB, 'Issue' AS event_name, device_category, device_vendor, device_model, 'OFFLINE_FUNNEL' AS DATA_TYPE      
+--FROM DASHBOARD_DATA_BASIC
+--WHERE Issue<>0
+)
+
+
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●----------------------------------------------
+-----------------------------------------------            START QUERY           --------------------------------------------
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●----------------------------------------------
+
+
+--SELECT *
+--FROM DASHBOARD_DATA_BASIC
+
+SELECT *
+FROM DASHBOARD_DATA_FULL_FUNNEL
+UNION ALL
+SELECT *
+FROM DASHBOARD_DATA_OFFLINE_FUNNEL
+--order by date, af_ad_type, af_channel, af_siteid,	media_source,	campaign,	attributed_touch_type, event_name, 
+--         platform, device_category,	device_vendor, device_model, NTB
+
+--SELECT *
+--FROM DASHBOARD_DATA_BASIC
+--WHERE event_name<>'install' AND date <= DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY)
+--order by date, af_ad_type, af_channel, af_siteid,	media_source,	campaign,	attributed_touch_type,--event_name, 
+--         platform, device_category,	device_vendor, device_model, NTB

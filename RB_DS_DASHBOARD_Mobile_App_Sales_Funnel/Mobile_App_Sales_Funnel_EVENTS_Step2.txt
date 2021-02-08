@@ -1,0 +1,219 @@
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+-----------------------------------------------         BUILDING TABLES          ----------------------------------------------
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+WITH DATA_MAIN AS (
+SELECT * except(JOIN_KEY,EMAIL_ACCESS)
+FROM 	`raiffeisen-owox.RB_DS_DASHBOARD_Mobile_App_Sales_Funnel.Mobile_App_Sales_Funnel_EVENTS_Step1_Table`
+),
+DATA_BASE AS (
+SELECT *
+FROM DATA_MAIN
+WHERE DATA_TYPE='OFFLINE_FUNNEL'
+)
+
+
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●----------------------------------------------
+-----------------------------------------------            START QUERY           --------------------------------------------
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●----------------------------------------------
+
+# START CREATE CD
+#SELECT *,
+#       case 
+#           when CD_Source_new='Organic' then 'Non-paid'
+#           when CD_Source_new='Other' then 'Non-paid'
+#           when CD_Parther='Other' then 'Non-paid'
+#           else 'Paid'
+#       end as CD_Type_acquisition
+#FROM (
+#SELECT *,
+#       case 
+#           when regexp_contains(device_vendor,r'samsung|Samsung|SAMSUNG') then 'Samsung'
+#           when regexp_contains(device_vendor,r'iPhone|iphone') then 'iPhone'
+#           when regexp_contains(device_vendor,r'Xiaomi|xiaomi') then 'Xiaomi'
+#           when regexp_contains(device_vendor,r'LG|lg') then 'LG'
+#           when regexp_contains(device_vendor,r'Meizu|meizu') then 'Meizu'
+#           when regexp_contains(device_vendor,r'Nokia|nokia') then 'Nokia'
+#           when regexp_contains(device_vendor,r'Sony|sony') then 'Sony'
+#           when regexp_contains(device_vendor,r'Huawei|HUAWEI|huawei') then 'Huawei'
+#           when regexp_contains(device_vendor,r'Honor|HONOR|honor') then 'Honor'
+#           else 'Other'
+#       end as CD_Device_vendor,
+#       case
+#           when event_name='FORM_DC_NTB_SUBMIT_LEAD' THEN 'BANK PROCESS'
+#           else '' 
+#       end as CD_Offline_funnel_process,
+#       JOIN_KEY as CD_Parther,
+#       case
+#           when JOIN_KEY='Organic' then 'Organic'
+#           when regexp_contains(media_source,r'.*google.*') then 'Google'
+#           when regexp_contains(media_source,r'.*(f|F)acebook.*') then 'Facebook'
+#           when regexp_contains(media_source,r'.*Apple Search.*') then 'ASA'
+#           when regexp_contains(media_source,r'.*bytedance.*') then 'TikTok'
+#           when JOIN_KEY='Gradient' and regexp_contains(media_source,r'.*gradient.*') then 'Gradient'
+#           when JOIN_KEY='Mobio' and regexp_contains(media_source,r'.*mobio.*') then 'Mobio'
+#           when JOIN_KEY='Admitad' and regexp_contains(media_source,r'.*admitad.*') then 'Admitad'
+#           when JOIN_KEY='Zorka' and regexp_contains(media_source,r'.*zorka.*') then 'Zorka'
+#           else media_source
+#       end as CD_Source_new,
+#       case 
+#           when event_name='BE_CLIENT_BUTTON' then '1'
+#           when event_name='FORM_DC_NTB_START_TYPING' then '2'
+#           when event_name='FORM_DC_NTB_SEND_OTP' then '3'
+#           when event_name='FORM_DC_NTB_VERIFY_OTP' then '4'
+#           when event_name='FORM_DC_NTB_SEND_PASSPORT_DATA' then '5'
+#           when event_name='FORM_DC_NTB_SUBMIT_LEAD' then 'LEAD'
+#           when event_name='install' then 'INSTALL'
+#           else '0'
+#       end as CD_Step_number,
+#       case 
+#           when event_name='BE_CLIENT_BUTTON' then 1
+#           when event_name='FORM_DC_NTB_START_TYPING' then 2
+#           when event_name='FORM_DC_NTB_SEND_OTP' then 3
+#           when event_name='FORM_DC_NTB_VERIFY_OTP' then 4
+#           when event_name='FORM_DC_NTB_SEND_PASSPORT_DATA' then 5
+#           when event_name='FORM_DC_NTB_SUBMIT_LEAD' then 6
+#           else 0
+#       end as Count_Distinct_CD_Step_number
+#FROM (
+# END CREATE CD
+SELECT *,
+       CASE
+           WHEN REGEXP_CONTAINS(JOIN_KEY,R'MgCom') 
+           THEN 'web-master@raiffeisen.ru;ivan.babaev@raiffeisen.ru;rostislav.orlov@raiffeisen.ru;vladislav.lavrentyev@raiffeisen.ru;vladislav.lavrentyev.raif@gmail.com;viktoria.pustygina@raiffeisen.ru;pkabanov.raiffeisen@gmail.com;mgcomstat3@gmail.com'
+           WHEN REGEXP_CONTAINS(JOIN_KEY,R'Gmobile') 
+           THEN 'web-master@raiffeisen.ru;ivan.babaev@raiffeisen.ru;rostislav.orlov@raiffeisen.ru;vladislav.lavrentyev@raiffeisen.ru;vladislav.lavrentyev.raif@gmail.com;viktoria.pustygina@raiffeisen.ru;pkabanov.raiffeisen@gmail.com;analytics@gomobile.ru'
+           WHEN REGEXP_CONTAINS(JOIN_KEY,R'Admitad') THEN 'web-master@raiffeisen.ru;ivan.babaev@raiffeisen.ru;rostislav.orlov@raiffeisen.ru;vladislav.lavrentyev@raiffeisen.ru;vladislav.lavrentyev.raif@gmail.com;viktoria.pustygina@raiffeisen.ru;Pavel.kabanov@raiffeisen.ru'
+           ELSE 'web-master@raiffeisen.ru;ivan.babaev@raiffeisen.ru;rostislav.orlov@raiffeisen.ru;vladislav.lavrentyev@raiffeisen.ru;vladislav.lavrentyev.raif@gmail.com;viktoria.pustygina@raiffeisen.ru;pkabanov.raiffeisen@gmail.com'
+       END AS EMAIL_ACCESS 
+
+FROM (
+SELECT *,
+       CASE  
+           WHEN (agency is null or agency='None') AND NOT REGEXP_CONTAINS(media_source,R'(o|O)rganic') AND REGEXP_CONTAINS(campaign,R'ohm.*|.*OHM.*') THEN 'OHM'
+           WHEN (agency is null or agency='None') AND NOT REGEXP_CONTAINS(media_source,R'(o|O)rganic') AND REGEXP_CONTAINS(campaign,'mgcom.*') THEN 'MgCom'
+           WHEN (agency is null or agency='None') AND REGEXP_CONTAINS(media_source,'googleadwords_int') AND REGEXP_CONTAINS(campaign,R'^UAC.*') THEN 'MgCom'
+           WHEN (agency is null or agency='None') AND REGEXP_CONTAINS(media_source,R'(o|O)rganic') THEN 'Organic'
+           WHEN REGEXP_CONTAINS(agency,R'.*mgcom.*') THEN 'MgCom'
+           WHEN REGEXP_CONTAINS(agency,R'.*admitad.*') THEN 'Admitad'
+           WHEN REGEXP_CONTAINS(agency,R'.*zorkamobi.*') THEN 'Zorka'
+           WHEN REGEXP_CONTAINS(agency,R'.*mobio.*') or REGEXP_CONTAINS(campaign,R'^mobio.*') THEN 'Mobio'
+           WHEN REGEXP_CONTAINS(agency,R'.*gradientt.*') THEN 'Gradient'
+           WHEN REGEXP_CONTAINS(agency,R'.*(g|G)mobile.*') THEN 'Gmobile'
+           WHEN (agency is null or agency='None') THEN 'Other'
+           ELSE agency 
+       END AS JOIN_KEY
+FROM (
+
+SELECT date, agency, 
+       CASE
+            WHEN agency IS NOT NULL AND media_source IS NOT NULL THEN media_source
+            WHEN agency IS NOT NULL AND media_source IS NULL THEN agency            
+            ELSE media_source
+       END AS media_source,  
+       campaign, platform,
+       Impressions,	Clicks,	Installs,	Lead,	QLead, Delivered,	Issue, Total_Cost, Count,
+       NTB,	event_name,	device_category, device_vendor,	DATA_TYPE, Form_CR_Event,	Step_CR_Event
+FROM (
+
+SELECT *, 0 AS Form_CR_Event, 0 AS Step_CR_Event
+FROM DATA_MAIN
+
+UNION ALL
+
+SELECT * EXCEPT(Form_CR_ID,	Step_CR_ID)
+FROM (
+SELECT t3.*,
+       IF(t4.Count IS NULL,0,t4.Count) AS Step_CR_Event 
+FROM (
+SELECT t1.*,
+       IF(t2.Count IS NULL,0,t2.Count) AS Form_CR_Event 
+FROM (
+SELECT date, agency, media_source, campaign, platform,
+       SUM(Impressions) AS Impressions,
+       SUM(Clicks) AS Clicks,
+       SUM(Installs) AS Installs,
+       SUM(Lead) AS Lead,
+       SUM(QLead) AS QLead,
+       SUM(Delivered) AS Delivered,
+       SUM(Issue) AS Issue,
+       SUM(Total_Cost) AS Total_Cost,
+       SUM(Count) AS Count,
+       '' AS NTB,
+       event_name, device_category,	device_vendor,
+       'OFFLINE_FUNNEL_FORM' AS DATA_TYPE, 
+       IF(event_name<>'install','FORM_DC_NTB_START_TYPING','-') AS Form_CR_ID,
+       CASE 
+           WHEN event_name='install' THEN '-'
+           WHEN event_name='FORM_DC_NTB_START_TYPING' THEN 'install'
+           WHEN event_name='FORM_DC_NTB_SEND_OTP' THEN 'FORM_DC_NTB_START_TYPING'
+           WHEN event_name='FORM_DC_NTB_VERIFY_OTP' THEN 'FORM_DC_NTB_SEND_OTP'
+           WHEN event_name='FORM_DC_NTB_SEND_PASSPORT_DATA' THEN 'FORM_DC_NTB_VERIFY_OTP'
+           WHEN event_name='FORM_DC_NTB_SUBMIT_LEAD' THEN 'FORM_DC_NTB_SEND_PASSPORT_DATA'
+           ELSE '-'
+       END AS Step_CR_ID
+FROM DATA_BASE
+--where date='2020-07-20' and media_source='googleadwords_int'
+GROUP BY date, agency, media_source, campaign, platform, NTB, event_name, device_category,	device_vendor, DATA_TYPE, Form_CR_ID
+) AS t1
+LEFT JOIN (
+SELECT date, agency, media_source, campaign, platform,
+       SUM(Impressions) AS Impressions,
+       SUM(Clicks) AS Clicks,
+       SUM(Installs) AS Installs,
+       SUM(Lead) AS Lead,
+       SUM(QLead) AS QLead,
+       SUM(Delivered) AS Delivered,
+       SUM(Issue) AS Issue,
+       SUM(Total_Cost) AS Total_Cost,
+       SUM(Count) AS Count,
+       '' AS NTB,
+       event_name, device_category,	device_vendor,
+       'OFFLINE_FUNNEL_FORM' AS DATA_TYPE
+FROM DATA_BASE
+GROUP BY date, agency, media_source, campaign, platform, NTB, event_name, device_category,	device_vendor, DATA_TYPE
+) AS t2
+ON t1.date=t2.date AND
+   t1.agency=t2.agency AND
+   t1.media_source=t2.media_source AND
+   t1.campaign=t2.campaign AND
+   t1.platform=t2.platform AND
+   t1.NTB=t2.NTB AND
+   t1.device_category=t2.device_category AND
+   t1.device_vendor=t2.device_vendor AND
+   t1.Form_CR_ID=t2.event_name
+) AS t3
+LEFT JOIN (
+SELECT date, agency, media_source, campaign, platform,
+       SUM(Impressions) AS Impressions,
+       SUM(Clicks) AS Clicks,
+       SUM(Installs) AS Installs,
+       SUM(Lead) AS Lead,
+       SUM(QLead) AS QLead,
+       SUM(Delivered) AS Delivered,
+       SUM(Issue) AS Issue,
+       SUM(Total_Cost) AS Total_Cost,
+       SUM(Count) AS Count,
+       '' AS NTB,
+       event_name, device_category,	device_vendor,
+       'OFFLINE_FUNNEL_FORM' AS DATA_TYPE
+FROM DATA_BASE
+GROUP BY date, agency, media_source, campaign, platform, NTB, event_name, device_category,	device_vendor, DATA_TYPE
+) AS t4
+ON t3.date=t4.date AND
+   t3.agency=t4.agency AND
+   t3.media_source=t4.media_source AND
+   t3.campaign=t4.campaign AND
+   t3.platform=t4.platform AND
+   t3.NTB=t4.NTB AND
+   t3.device_category=t4.device_category AND
+   t3.device_vendor=t4.device_vendor AND
+   t3.Step_CR_ID=t4.event_name
+) AS t5
+
+) AS t6
+
+) AS t7
+) AS t8
+
+#) AS t9
+#) AS t10
