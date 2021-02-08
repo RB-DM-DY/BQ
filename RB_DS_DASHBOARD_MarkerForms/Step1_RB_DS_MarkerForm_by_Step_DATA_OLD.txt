@@ -1,0 +1,319 @@
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+-----------------------------------------------         BUILDING TABLES          ----------------------------------------------
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+
+WITH DATE_PERIOD AS (-------<<<<<<
+SELECT CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE()) AS STRING),"0801") AS StartDate,
+       REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","") AS EndDate
+),
+DATA AS (-------<<<<<<
+SELECT *
+FROM (
+SELECT date, fullVisitorId, 
+       IF(customDimensions.index=4,customDimensions.value,NULL) AS sessionId,
+       visitNumber, visitStartTime, 
+       CAST(ROUND(h.time/1000,0)+visitStartTime AS INT64) AS timeHit, --ПРЕОБРАЗУЕМ ВРЕМЯ ХИТА В UNIX-ФОРМАТ
+       h.hitNumber, h.type,
+       trafficSource.source, trafficSource.medium, device.deviceCategory, 
+       h.eventInfo.eventCategory, h.eventInfo.eventAction, h.eventInfo.eventLabel, 
+       CASE
+           WHEN STRPOS(h.page.pagePath,"?")>0 THEN REPLACE(SUBSTR(h.page.pagePath,0,STRPOS(h.page.pagePath,"?")-1),"//","/")
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"seg_") THEN REPLACE(SPLIT(h.page.pagePath,"seg_")[OFFSET (0)],"//","/")
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"//") THEN REPLACE(h.page.pagePath,"//","/")
+           ELSE h.page.pagePath
+       END AS pagePath
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h, DATE_PERIOD
+WHERE 
+      _TABLE_SUFFIX BETWEEN DATE_PERIOD.StartDate AND DATE_PERIOD.EndDate
+) AS t1
+WHERE sessionId IS NOT NULL AND ((type="PAGE" AND eventCategory IS NULL) OR (type="EVENT" AND eventCategory="Interaction form"))
+),
+DATA_INTERACTION AS (-------<<<<<<
+SELECT date, fullVisitorId, sessionId, eventCategory, pagePath
+FROM (
+SELECT date, fullVisitorId, 
+       IF(customDimensions.index=4,customDimensions.value,NULL) AS sessionId,
+       visitNumber, visitStartTime, 
+       CAST(ROUND(h.time/1000,0)+visitStartTime AS INT64) AS timeHit, --ПРЕОБРАЗУЕМ ВРЕМЯ ХИТА В UNIX-ФОРМАТ
+       h.hitNumber, h.type,
+       trafficSource.source, trafficSource.medium, device.deviceCategory, 
+       h.eventInfo.eventCategory, h.eventInfo.eventAction, h.eventInfo.eventLabel, 
+       CASE
+           WHEN STRPOS(h.page.pagePath,"?")>0 THEN REPLACE(SUBSTR(h.page.pagePath,0,STRPOS(h.page.pagePath,"?")-1),"//","/")
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"seg_") THEN REPLACE(SPLIT(h.page.pagePath,"seg_")[OFFSET (0)],"//","/")
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"//") THEN REPLACE(h.page.pagePath,"//","/")
+           ELSE h.page.pagePath
+       END AS pagePath
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h, DATE_PERIOD
+WHERE 
+      _TABLE_SUFFIX BETWEEN DATE_PERIOD.StartDate AND DATE_PERIOD.EndDate
+) AS t1
+WHERE sessionId IS NOT NULL AND REGEXP_CONTAINS(eventCategory,R"Interaction form")
+GROUP BY date, fullVisitorId, sessionId, eventCategory, pagePath
+),
+AGRIGATION_WO_TYP AS (-------<<<<<<
+SELECT date, fullVisitorId,	sessionId, visitNumber,	visitStartTime,	timeHit, hitNumber,	type,	source,	medium,	deviceCategory,	eventAction, pagePath, ForRANGE
+FROM (
+SELECT *,
+       CASE 
+           WHEN ForRANGE="Visibility" AND NumDouble=1 AND MinDouble=1 AND REGEXP_CONTAINS(eventAction,R"Step 1 ")  THEN "SAVE"
+           WHEN ForRANGE="Focus" AND NumDouble=MaxDouble THEN "SAVE"
+           ELSE "DEL"
+       END AS Clean
+FROM (
+SELECT *,
+       MIN(NumDouble) OVER (PARTITION BY date, fullVisitorId,	sessionId, visitNumber, source,	medium,	deviceCategory,	eventAction, pagePath, ForRANGE) AS MinDouble,  
+       MAX(NumDouble) OVER (PARTITION BY date, fullVisitorId,	sessionId, visitNumber, source,	medium,	deviceCategory,	eventAction, pagePath, ForRANGE) AS MaxDouble
+FROM (       
+SELECT *,
+       ROW_NUMBER() OVER (PARTITION BY date, fullVisitorId,	sessionId, visitNumber, source,	medium,	deviceCategory,	eventAction, pagePath, ForRANGE) AS NumDouble     
+FROM (
+SELECT date, fullVisitorId, sessionId, visitNumber, visitStartTime, timeHit, hitNumber, type, source, medium, deviceCategory,
+       eventAction, pagePath,	ForRANGE
+FROM (
+SELECT *,
+       CASE 
+           WHEN REGEXP_CONTAINS(type,R"PAGE") THEN "PageView"       
+           WHEN REGEXP_CONTAINS(eventLabel,R"^Label:Visibility") THEN "Visibility"
+           WHEN NOT REGEXP_CONTAINS(eventLabel,R"^Label:Visibility") THEN "Focus"
+           ELSE "OTHER"
+       END AS ForRANGE
+FROM (       
+SELECT t1.*
+FROM (
+SELECT *
+FROM DATA
+) AS t1
+INNER JOIN (
+SELECT *
+FROM DATA_INTERACTION
+) AS t2
+ON t1.sessionId=t2.sessionId AND t1.pagePath=t2.pagePath
+) AS t3
+) AS t4 
+WHERE ForRANGE<>"OTHER" AND ForRANGE<>"PageView" OR (REGEXP_CONTAINS(eventLabel,R"TYP") AND ForRANGE="Visibility")-- AND REGEXP_CONTAINS(eventLabel,R"TYP")
+) AS t5
+) AS t6
+) AS t7
+) AS t8
+WHERE Clean="SAVE"
+),
+AGRIGATION_TYP AS (-------<<<<<<
+SELECT date, fullVisitorId,	sessionId, visitNumber,	visitStartTime,	timeHit, hitNumber,	type,	source,	medium,	deviceCategory,	eventAction, pagePath, ForRANGE
+FROM (
+SELECT *,
+       CASE 
+           WHEN ForRANGE="Visibility" AND NumDouble=1 AND MinDouble=1 THEN "SAVE"
+           ELSE "DEL"
+       END AS Clean
+FROM (
+SELECT *,
+       MIN(NumDouble) OVER (PARTITION BY date, fullVisitorId,	sessionId, visitNumber, source,	medium,	deviceCategory,	eventAction, pagePath, ForRANGE) AS MinDouble,  
+       MAX(NumDouble) OVER (PARTITION BY date, fullVisitorId,	sessionId, visitNumber, source,	medium,	deviceCategory,	eventAction, pagePath, ForRANGE) AS MaxDouble
+FROM (       
+SELECT *,
+       ROW_NUMBER() OVER (PARTITION BY date, fullVisitorId,	sessionId, visitNumber, source,	medium,	deviceCategory,	eventAction, pagePath, ForRANGE) AS NumDouble     
+FROM (
+SELECT date, fullVisitorId, sessionId, visitNumber, visitStartTime, timeHit, hitNumber, type, source, medium, deviceCategory,
+       eventAction, eventLabel, pagePath,	ForRANGE
+FROM (
+SELECT *,
+       CASE 
+           WHEN REGEXP_CONTAINS(type,R"PAGE") THEN "PageView"       
+           WHEN REGEXP_CONTAINS(eventLabel,R"^Label:Visibility") THEN "Visibility"
+           WHEN NOT REGEXP_CONTAINS(eventLabel,R"^Label:Visibility") THEN "Focus"
+           ELSE "OTHER"
+       END AS ForRANGE
+FROM (       
+SELECT t1.*
+FROM (
+SELECT *
+FROM DATA
+) AS t1
+INNER JOIN (
+SELECT *
+FROM DATA_INTERACTION
+) AS t2
+ON t1.sessionId=t2.sessionId AND t1.pagePath=t2.pagePath
+) AS t3
+) AS t4 
+WHERE ForRANGE="Visibility" AND REGEXP_CONTAINS(eventLabel,R"TYP")
+) AS t5
+) AS t6
+) AS t7
+) AS t8
+WHERE Clean="SAVE"
+),
+STEP_WO_ENTRANCE AS ( -------<<<<<<
+SELECT date,  fullVisitorId, sessionId,	visitNumber, visitStartTime, timeHit, hitNumber, type, source, medium, deviceCategory, eventAction, pagePath, ForRANGE
+FROM (
+SELECT *,
+       CASE 
+           WHEN ForRANGE="TYP" AND NumDouble<>ContDouble THEN "DEL"
+           ELSE "SAVE"
+       END Clean
+FROM (
+SELECT *,
+       ROW_NUMBER() OVER (PARTITION BY date, fullVisitorId, sessionId, pagePath, ForRANGE) AS NumDouble,
+       COUNT(sessionId) OVER (PARTITION BY date, fullVisitorId, sessionId, pagePath, ForRANGE) AS ContDouble
+FROM (
+SELECT date, fullVisitorId,	sessionId, visitNumber,	visitStartTime,	timeHit, hitNumber,	type,	source,	medium,	deviceCategory,	eventAction, pagePath, 
+       CASE 
+           WHEN ForRANGE="Visibility" AND CurStep<>MaxStep THEN "Show"
+           WHEN CurStep>MaxStep THEN "DEL"             
+           WHEN ForRANGE="Focus" AND CurStep<>MaxStep THEN ForRANGE            
+           WHEN CurStep=MaxStep THEN "TYP"
+--           WHEN CAST(CurStep AS INT64)>CAST(MaxStep AS INT64) THEN "DEL"           
+           ELSE "DEL"
+       END AS ForRANGE--, CurStep, MaxStep
+FROM (
+SELECT *,
+       CAST(SPLIT(eventAction," ")[OFFSET (1)] AS INT64) AS CurStep,
+       CAST(SPLIT(eventAction," ")[OFFSET (3)] AS INT64) AS MaxStep       
+FROM (
+SELECT *
+FROM AGRIGATION_WO_TYP
+WHERE REGEXP_CONTAINS(eventAction,R"Step")-- AND REGEXP_CONTAINS(sessionId,R"113972316.1565181383_1565181417566|2043708497.1565182393_1565182723364|1354911194.1565171956_1565171999342|712435937.1565126654_1565127806767")
+UNION ALL
+SELECT *
+FROM AGRIGATION_TYP
+WHERE REGEXP_CONTAINS(eventAction,R"Step")-- AND REGEXP_CONTAINS(sessionId,R"113972316.1565181383_1565181417566|2043708497.1565182393_1565182723364|1354911194.1565171956_1565171999342|712435937.1565126654_1565127806767")
+) AS t1
+) AS t2
+) AS t3
+WHERE ForRANGE<>"DEL"
+) AS t4
+) AS t5
+WHERE Clean="SAVE"
+),
+ENTRANCE AS ( -------<<<<<<
+-----------------------------------------------------------------------------------------------------------------------------------------
+--ТАБЛИЦА ENTRANCE ТОЛЬКО С ФОРМОЙ OAPI
+SELECT date, fullVisitorId,	sessionId, visitNumber,	visitStartTime,	timeHit, hitNumber,	type,	source,	medium,	deviceCategory,	eventAction, pagePath, ForRANGE
+FROM (
+SELECT ENTRANCE.*,
+       IF(STEP.sessionId IS NULL,"DEL","SAVE") AS Clean
+FROM (       
+-----------------------------------------------------------------------------------------------------------------------------------------
+--ТАБЛИЦА С ENTRANCE
+SELECT date, fullVisitorId, sessionId, visitNumber, visitStartTime, timeHit, hitNumber, type,	source,	medium,	deviceCategory,	eventAction, pagePath, ForRANGE
+FROM (
+SELECT date, fullVisitorId, sessionId, visitNumber, visitStartTime, 
+       visitStartTime AS timeHit, 1 AS hitNumber, "PAGE" AS type, source, medium,	
+       deviceCategory, eventAction, pagePath, "Entrance" AS ForRANGE, 
+       ROW_NUMBER() OVER (PARTITION BY date, fullVisitorId, sessionId, visitNumber, visitStartTime) AS NumDouble
+FROM DATA
+--WHERE REGEXP_CONTAINS(sessionId,R"113972316.1565181383_1565181417566|2043708497.1565182393_1565182723364|1354911194.1565171956_1565171999342|712435937.1565126654_1565127806767")
+) AS t1
+WHERE NumDouble=1
+-----------------------------------------------------------------------------------------------------------------------------------------
+) AS ENTRANCE
+LEFT JOIN (
+-----------------------------------------------------------------------------------------------------------------------------------------
+--ТАБЛИЦА С STEP
+SELECT *
+FROM STEP_WO_ENTRANCE
+-----------------------------------------------------------------------------------------------------------------------------------------
+) AS STEP
+ON ENTRANCE.sessionId=STEP.sessionId AND ENTRANCE.visitStartTime=STEP.visitStartTime AND ENTRANCE.pagePath=STEP.pagePath
+) AS t3
+WHERE Clean="SAVE"
+GROUP BY date, fullVisitorId,	sessionId, visitNumber,	visitStartTime,	timeHit, hitNumber,	type,	source,	medium,	deviceCategory,	eventAction, pagePath, ForRANGE
+-----------------------------------------------------------------------------------------------------------------------------------------
+)
+
+
+
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+-----------------------------------------------            START QUERY           ----------------------------------------------
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+
+--SELECT *
+--FROM AGRIGATION_WO_TYP
+--FROM AGRIGATION_TYP
+--WHERE sessionId="712435937.1565126654_1565127806767"
+--ORDER BY date, sessionId, timeHit
+
+--select *
+--from (
+--select *,
+--       count(sessionId) over (partition by date, fullVisitorId,	sessionId) as double
+--from (     
+     
+SELECT date, fullVisitorId, sessionId, visitNumber,	visitStartTime,	timeHit, hitNumber, type, source, medium,	deviceCategory,	eventAction, pagePath, ForRANGE, CitizenShip,	Step,	
+       CASE 
+           WHEN REGEXP_CONTAINS(pagePath,R"\/rb\/|\/vb\/") THEN "RB"
+           ELSE "Classic"
+       END AS VB,
+       IF(Step="Entrance",1,0) AS Entrance,
+       IF(Step="Show",1,0) AS Show,
+       IF(REGEXP_CONTAINS(Step,R"Entrance|Show|TYP"),0,1) AS Interactions,
+       IF(Step="TYP",1,0) AS TYP       
+       --Count--,
+--       ROW_NUMBER() OVER (PARTITION BY date, fullVisitorId,	sessionId, source, medium, pagePath ORDER BY timeHit) AS StepNum,
+--       COUNT(sessionId) OVER (PARTITION BY date, fullVisitorId,	sessionId, source, medium, pagePath) AS MaxStepNum       
+FROM (
+--SELECT *,
+--       CASE
+--           WHEN NumDouble=CountDouble THEN "SAVE"
+--           ELSE "DEL"
+--       END AS Clean
+--FROM (       
+SELECT *,
+       CASE 
+           WHEN ForRANGE="Entrance" THEN "Entrance"        
+           WHEN ForRANGE="Show" THEN "Show"
+           WHEN ForRANGE="TYP" THEN "TYP"         
+           ELSE eventAction
+        END AS Step,
+        1 AS Count,
+        ROW_NUMBER() OVER (PARTITION BY date, fullVisitorId,	sessionId, visitNumber, pagePath, ForRANGE ORDER BY timeHit) AS NumDouble,
+        COUNT(ForRANGE) OVER (PARTITION BY date, fullVisitorId,	sessionId, visitNumber, pagePath, ForRANGE) AS CountDouble
+FROM (        
+SELECT t3.*,
+       IF(t4.sessionId IS NULL,"RF","NOT RF") AS CitizenShip
+FROM ( 
+-----------------------------------------------------------------------------------------------------------------------------------------
+--ТАБЛИЦА С ENTRANCE
+SELECT *
+FROM ENTRANCE
+-----------------------------------------------------------------------------------------------------------------------------------------
+
+UNION ALL
+
+-----------------------------------------------------------------------------------------------------------------------------------------
+--ТАБЛИЦА С STEP ЗА ВЫЧЕТОМ ОТСУТСТВУЮЩИХ ENTRANCE
+SELECT date, fullVisitorId,	sessionId, visitNumber,	visitStartTime,	timeHit, hitNumber,	type,	source,	medium,	deviceCategory,	eventAction, pagePath, ForRANGE
+FROM (
+SELECT STEP.*,
+       IF(ENTRANCE.sessionId IS NULL,"DEL","SAVE") AS Clean
+FROM (
+SELECT *
+FROM STEP_WO_ENTRANCE
+) AS STEP
+LEFT JOIN (
+SELECT *
+FROM ENTRANCE
+) AS ENTRANCE
+ON STEP.sessionId=ENTRANCE.sessionId AND STEP.visitStartTime=ENTRANCE.visitStartTime AND STEP.pagePath=ENTRANCE.pagePath
+) AS t1
+WHERE Clean="SAVE"
+-----------------------------------------------------------------------------------------------------------------------------------------
+
+) AS t3
+LEFT JOIN (
+SELECT sessionId, visitStartTime, pagePath
+FROM DATA
+WHERE REGEXP_CONTAINS(eventLabel,"Context:citizenship=NONRF|Context:citizenship=U menya net grazhdanstva RF")
+GROUP BY sessionId, visitStartTime, pagePath
+) AS t4
+ON t3.sessionId=t4.sessionId AND t3.visitStartTime=t4.visitStartTime AND t3.pagePath=t4.pagePath
+) AS t5
+--) AS t6
+--WHERE Clean="SAVE"-- and sessionId="1008842282.1564982847_1564984179442"
+) AS t7
+ORDER BY date, sessionId, timeHit
+----LIMIT 100
+
+--) as t1
+--) as t2 where double<2

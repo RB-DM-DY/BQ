@@ -1,0 +1,53 @@
+SELECT
+  Date,
+  0 AS Entrance,
+  COUNT(sessionId) AS Interactions,
+  timeHit-visitStartTime AS Timing,
+--       PERCENTILE_CONT(Timing, 0.5) OVER (partition by Date) AS median -- рассчет медианы
+  visitNumber, source, medium, deviceCategory, eventCategory, eventAction, ForRANGE, pagePath, MaxStep, CitizenShip
+FROM (
+  SELECT date, fullVisitorId, sessionId, visitNumber, visitStartTime, timeHit, hitNumber, type,
+         source, medium, deviceCategory, eventCategory, eventAction, eventLabel, "Focus" AS ForRANGE, pagePath, MaxStep, CitizenShip
+  FROM (
+SELECT date, fullVisitorId, sessionId, visitNumber, visitStartTime, timeHit, hitNumber, type,
+       source, medium, deviceCategory, eventCategory, eventAction, eventLabel, "Focus" AS ForRANGE, pagePath, CitizenShip,
+       SPLIT[SAFE_ORDINAL(4)] AS MaxStep, ROW
+FROM (
+    SELECT *,
+           SPLIT(eventAction," ") AS SPLIT,
+           ROW_NUMBER() OVER (PARTITION BY sessionId, eventAction ORDER BY hitNumber) AS ROW
+    FROM (
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ТАБЛИЦА ПО ВЗАИМОДЕЙСТВИЮ С ПОЛЯМИ
+      SELECT *
+      FROM `raiffeisen-owox.RB_DS_Marker_Form.Step1_RB_DS_MarkerForm_by_Step_DATA`
+      WHERE ForRANGE="Focus"
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+UNION ALL
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ТАБЛИЦА С ПОСЛЕДНИМ ШАГОМ
+      SELECT date, fullVisitorId, sessionId, visitNumber, visitStartTime, timeHit, hitNumber, type,
+             source, medium, deviceCategory, eventCategory, eventAction, eventLabel, ForRANGE, pagePath, CitizenShip
+      FROM (
+        SELECT *
+        FROM (
+          SELECT date, fullVisitorId, sessionId, visitNumber, visitStartTime, timeHit, hitNumber, type, 
+                 source, medium, deviceCategory, eventCategory, eventAction, eventLabel, ForRANGE, pagePath, CitizenShip,
+                 N[SAFE_ORDINAL(2)] AS FIRST,
+                 N[SAFE_ORDINAL(4)] AS LAST
+          FROM (
+            SELECT *,
+                   SPLIT(eventAction," ") AS N
+            FROM `raiffeisen-owox.RB_DS_Marker_Form.Step1_RB_DS_MarkerForm_by_Step_DATA`
+            WHERE ForRANGE="Visibility" 
+            ) AS t1 
+            ) AS t2
+        WHERE FIRST=LAST ) AS t3
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+        ) AS t1
+        ) AS t2
+        ) AS t3
+  WHERE ROW=1
+    --      AND sessionId="1003631888.1544536712_1544704824862" --НЕ ВСЕ ШАГИ В ЭТОМ СРЕЗЕ ИДЕНТИФИЦИРУЮТСЯ
+    ) AS t4
+GROUP BY date, visitNumber, Timing, source, medium, deviceCategory, eventCategory, eventAction, ForRANGE, pagePath, MaxStep, CitizenShip

@@ -1,0 +1,431 @@
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+-----------------------------------------------         BUILDING TABLES          ----------------------------------------------
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+
+WITH DATE_PERIOD AS (-------<<<<<<
+SELECT REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","") AS StartDate,
+       --CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE()) AS STRING),"1101") AS StartDate,
+       --CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE()) AS STRING),"1217") AS EndDate
+       REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","") AS EndDate
+),
+DATE_PERIOD_STEP AS (-------<<<<<<
+SELECT CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),"0101") AS StartDate,
+       REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","") AS EndDate
+),
+DATA AS (-------<<<<<< CONSOLIDATE ALL DATA
+SELECT *
+FROM (
+SELECT date, fullVisitorId, 
+       IF(customDimensions.index=4,customDimensions.value,NULL) AS sessionId,
+       visitNumber, visitStartTime, 
+       CAST(ROUND(h.time/1000,0)+visitStartTime AS INT64) AS timeHit, --ПРЕОБРАЗУЕМ ВРЕМЯ ХИТА В UNIX-ФОРМАТ
+       h.hitNumber, h.type,
+       trafficSource.source, trafficSource.medium, device.deviceCategory, 
+       h.eventInfo.eventCategory, h.eventInfo.eventAction, h.eventInfo.eventLabel, 
+       CASE
+           WHEN STRPOS(h.page.pagePath,"?")>0 THEN REPLACE(SUBSTR(h.page.pagePath,0,STRPOS(h.page.pagePath,"?")-1),"//","/")
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"seg_") THEN REPLACE(SPLIT(h.page.pagePath,"seg_")[OFFSET (0)],"//","/")
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"//") THEN REPLACE(h.page.pagePath,"//","/")
+           ELSE h.page.pagePath
+       END AS pagePath
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h, DATE_PERIOD
+WHERE 
+      _TABLE_SUFFIX BETWEEN DATE_PERIOD.StartDate AND DATE_PERIOD.EndDate
+) AS t1
+WHERE sessionId IS NOT NULL AND REGEXP_CONTAINS(eventCategory,R"Interaction form site") AND NOT REGEXP_CONTAINS(pagePath,R".*test.*")
+--      AND REGEXP_CONTAINS(sessionId,R"1858181068.1567327377_1567328413252|728492410.1567324900_1567327408112|234814764.1566821943_1567325172164|1573703047.1555393586_1567336646080")
+      AND REGEXP_CONTAINS(pagePath,R"/promo/") --/promo/cc110/affiliate_cash/ 
+--      AND date="20190801"
+--      AND source="(direct)"
+--      AND deviceCategory="desktop"
+GROUP BY date, fullVisitorId, sessionId, visitNumber, visitStartTime, timeHit, hitNumber,	type,	source,	medium,	deviceCategory,	eventCategory, eventAction, eventLabel,	pagePath
+),
+DATA_FORM_STEP AS (-------<<<<<< CONSOLIDATE ALL DATA
+SELECT *
+FROM (
+SELECT MAX(eventAction) OVER (PARTITION BY pagePath, LandigType, CitizenShip) AS eventAction, pagePath, LandigType, CitizenShip
+FROM (
+SELECT eventAction, pagePath, LandigType, "RF" AS CitizenShip
+FROM (
+SELECT *
+FROM (
+SELECT if(REGEXP_CONTAINS(eventAction,R"^\d{1,2}|100$"),eventAction,null) AS eventAction, pagePath, 
+       CASE
+           WHEN REGEXP_CONTAINS(pagePath,R"rb|vb") THEN "@RB"
+           ELSE "Classic"
+       END AS LandigType
+FROM (       
+SELECT *
+FROM (
+SELECT date, fullVisitorId, 
+       IF(customDimensions.index=4,customDimensions.value,NULL) AS sessionId,
+       visitNumber, visitStartTime, 
+       CAST(ROUND(h.time/1000,0)+visitStartTime AS INT64) AS timeHit, --ПРЕОБРАЗУЕМ ВРЕМЯ ХИТА В UNIX-ФОРМАТ
+       h.hitNumber, h.type,
+       trafficSource.source, trafficSource.medium, device.deviceCategory, 
+       h.eventInfo.eventCategory, h.eventInfo.eventAction, h.eventInfo.eventLabel, 
+       CASE
+           WHEN STRPOS(h.page.pagePath,"?")>0 THEN REPLACE(SUBSTR(h.page.pagePath,0,STRPOS(h.page.pagePath,"?")-1),"//","/")
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"seg_") THEN REPLACE(SPLIT(h.page.pagePath,"seg_")[OFFSET (0)],"//","/")
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"//") THEN REPLACE(h.page.pagePath,"//","/")
+           ELSE h.page.pagePath
+       END AS pagePath
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h, DATE_PERIOD_STEP
+WHERE 
+      _TABLE_SUFFIX BETWEEN DATE_PERIOD_STEP.StartDate AND DATE_PERIOD_STEP.EndDate
+) AS t1
+WHERE sessionId IS NOT NULL AND REGEXP_CONTAINS(eventCategory,R"Interaction form site") AND NOT REGEXP_CONTAINS(pagePath,R".*test.*")
+--      AND REGEXP_CONTAINS(sessionId,R"1858181068.1567327377_1567328413252|728492410.1567324900_1567327408112|234814764.1566821943_1567325172164|1573703047.1555393586_1567336646080")
+      AND REGEXP_CONTAINS(pagePath,R"/promo/") --/promo/cc110/affiliate_cash/ 
+--      AND date="20190801"
+--      AND source="(direct)"
+--      AND deviceCategory="desktop"
+GROUP BY date, fullVisitorId, sessionId, visitNumber, visitStartTime, timeHit, hitNumber,	type,	source,	medium,	deviceCategory,	eventCategory, eventAction, eventLabel,	pagePath
+) AS t2
+) AS t3
+WHERE eventAction IS NOT NULL
+GROUP BY eventAction, pagePath, LandigType
+) AS t4
+) AS T5
+) AS T6
+GROUP BY eventAction, pagePath, LandigType, CitizenShip 
+),
+DATA_VIEW_CLICK AS (-------<<<<<<ВЗАИМОДЕЙСТВИЯ ГДЕ НА ПЕРВОМ ШАГЕ ЕСТЬ VISIBILITY
+SELECT date, fullVisitorId, sessionId, visitNumber, visitStartTime, timeHit, hitNumber, type, source, medium, deviceCategory, 
+       eventCategory, CONCAT("Step ",CAST(eventAction AS STRING)," of ",CAST(MaxStep AS STRING)) AS eventAction, eventLabel, pagePath
+FROM (       
+SELECT *,
+       MAX(eventAction) OVER (PARTITION BY pagePath) AS MaxStep
+FROM (       
+SELECT date, fullVisitorId, sessionId, visitNumber, visitStartTime, timeHit, hitNumber, type, source, medium, deviceCategory, 
+       eventCategory, IF(eventAction="undefined",1,CAST(eventAction AS INT64)) AS eventAction, eventLabel, pagePath
+FROM (
+SELECT t1.*,
+       IF(t2.sessionId IS NULL,"DEL","SAVE") AS Clean
+FROM (
+SELECT *
+FROM DATA
+) AS t1
+LEFT JOIN (
+SELECT date, fullVisitorId, sessionId, pagePath
+FROM DATA
+WHERE --REGEXP_CONTAINS(eventAction,R"Step 1") AND 
+      REGEXP_CONTAINS(eventLabel,R"Visibility|visibility") 
+GROUP BY date, fullVisitorId, sessionId, pagePath   
+) AS t2
+ON t1.date=t2.date AND t1.sessionId=t2.sessionId AND t1.pagePath=t2.pagePath
+) AS t3 
+WHERE Clean="SAVE"
+--ORDER BY date, fullVisitorId,	sessionId, timeHit,	hitNumber --!!!
+) AS t4
+) AS t5
+),
+DATA_BASED AS (
+------------------------------------------------------------------------------------------------------------------------------
+--БАЗОВАЯ ТАБЛИЦА ДЛЯ ДАШБОРДА
+SELECT date, fullVisitorId,	sessionId, visitNumber, visitStartTime, timeHit, hitNumber, Timing, type, 
+       source, medium, deviceCategory, eventCategory, 
+       CASE 
+           WHEN SPLIT(eventAction," ")[OFFSET (3)]=TampleStep THEN eventAction
+           ELSE CONCAT("Step ",SPLIT(eventAction," ")[OFFSET (1)]," of ",TampleStep)
+       END AS eventAction,       
+       eventLabel, pagePath, LandigType, 
+       CASE
+           WHEN SPLIT(eventAction," ")[OFFSET (3)]=TampleStep THEN Interaction
+           WHEN CAST(SPLIT(eventAction," ")[OFFSET (1)] AS INT64)<CAST(TampleStep AS INT64) THEN "LAST INTERACTION IN STEP"
+           ELSE "TYP"
+       END AS Interaction,       
+       Product,	
+       CASE 
+           WHEN SPLIT(eventAction," ")[OFFSET (3)]=TampleStep THEN InteractionStep
+           WHEN CAST(SPLIT(eventAction," ")[OFFSET (1)] AS INT64)<CAST(TampleStep AS INT64) AND TYP>0 THEN TYP
+           WHEN CAST(SPLIT(eventAction," ")[OFFSET (1)] AS INT64)<CAST(TampleStep AS INT64) AND TYP=0 THEN InteractionStep             
+           ELSE 0
+       END AS InteractionStep,      
+       CASE 
+           WHEN SPLIT(eventAction," ")[OFFSET (3)]=TampleStep THEN TYP
+           WHEN CAST(SPLIT(eventAction," ")[OFFSET (1)] AS INT64)<CAST(TampleStep AS INT64) AND TYP>0 THEN 0
+           WHEN CAST(SPLIT(eventAction," ")[OFFSET (1)] AS INT64)=CAST(TampleStep AS INT64) AND TYP=0 AND InteractionStep>0 THEN InteractionStep              
+           ELSE 0
+       END AS TYP,       
+       CitizenShip, CountSesInStep
+FROM (
+SELECT t5.*,
+       t6.eventAction AS TampleStep
+FROM (  
+
+SELECT *,
+       COUNT(sessionId) OVER (PARTITION BY date, visitNumber, source,	medium,	deviceCategory, eventAction, pagePath, LandigType, Product, CitizenShip) AS CountSesInStep  
+FROM (       
+SELECT t2.*,
+       IF(t3.sessionId IS NULL,"RF","NOT RF") AS CitizenShip     
+FROM (
+SELECT date, fullVisitorId,	sessionId, 
+       CASE 
+           WHEN visitNumber=1 THEN "New"
+           ELSE "Return"
+       END AS visitNumber,
+       visitStartTime,	timeHit, hitNumber,	timeHit-visitStartTime AS Timing, 
+       type,	source,	medium,	deviceCategory,	eventCategory, eventAction, eventLabel,	pagePath,
+       CASE
+           WHEN REGEXP_CONTAINS(pagePath,R"rb|vb") THEN "@RB"
+           ELSE "Classic"
+       END AS LandigType,
+       CASE 
+           WHEN CAST(SPLIT(eventAction," ")[OFFSET (1)] AS INT64)=CAST(SPLIT(eventAction," ")[OFFSET (3)] AS INT64) THEN "TYP"
+           ELSE "LAST INTERACTION IN STEP"
+       END AS Interaction,
+       CASE 
+           WHEN REGEXP_CONTAINS(pagePath,R"\/promo\/pl\/.*|.*\/pl\/.*") THEN "PL"
+           WHEN REGEXP_CONTAINS(pagePath,R"\/promo\/.*-dc|dc-.*\/.*|\/dc\/|/simple/|.*\/vsesrazu-dc\/.*") THEN "DC"
+           WHEN REGEXP_CONTAINS(pagePath,R"\/promo\/active\/cc\/|.*\/cc110\/.*|\/promo\/110days\/.*") THEN "CC"    
+           WHEN REGEXP_CONTAINS(pagePath,R"\/promo\/active\/deposit\/|.*\/deposit\/.*") THEN "TD"           
+           WHEN REGEXP_CONTAINS(pagePath,R"\/promo\/savings\/.*") THEN "SA"
+           WHEN REGEXP_CONTAINS(pagePath,R"\/promo\/rko\/.*") THEN "SME"                  
+           ELSE "Other"
+       END AS Product,
+       CASE 
+           WHEN CAST(SPLIT(eventAction," ")[OFFSET (1)] AS INT64)<>CAST(SPLIT(eventAction," ")[OFFSET (3)] AS INT64) THEN 1
+           ELSE 0
+       END AS InteractionStep,
+       CASE 
+           WHEN CAST(SPLIT(eventAction," ")[OFFSET (1)] AS INT64)=CAST(SPLIT(eventAction," ")[OFFSET (3)] AS INT64) THEN 1
+           ELSE 0
+       END AS TYP
+FROM (
+SELECT *, --<УНИКАЛИЗИРУЕМ ШАГИ И ИСКЛЮЧАЕМ СОБЫТИЯ ВОЗВРАТОВ НА ПРЕДЫДУЩИЙ ШАГ>
+       ROW_NUMBER() OVER (PARTITION BY date, fullVisitorId, sessionId, eventAction, pagePath ORDER BY eventAction, hitNumber) AS NumDouble,
+       COUNT(sessionId) OVER (PARTITION BY date, fullVisitorId, sessionId, eventAction, pagePath ORDER BY eventAction) AS CountDouble
+FROM DATA_VIEW_CLICK
+--WHERE REGEXP_CONTAINS(eventLabel,R"Focus|Click|TYP") AND REGEXP_CONTAINS(eventAction,R"Step")
+) AS t1
+WHERE NumDouble=CountDouble AND CAST(SPLIT(eventAction," ")[OFFSET (1)] AS INT64)<=CAST(SPLIT(eventAction," ")[OFFSET (3)] AS INT64)
+) AS t2
+LEFT JOIN (
+SELECT sessionId, visitStartTime, pagePath
+FROM DATA
+WHERE REGEXP_CONTAINS(eventLabel,"Context:citizenship=NONRF|Context:citizenship=U menya net grazhdanstva RF")
+GROUP BY sessionId, visitStartTime, pagePath
+) AS t3
+ON t2.sessionId=t3.sessionId AND t2.visitStartTime=t3.visitStartTime AND t2.pagePath=t3.pagePath
+) AS t4
+ORDER BY date, fullVisitorId,	sessionId, eventAction, timeHit,	hitNumber --!!!
+) AS t5
+LEFT JOIN (
+SELECT *
+FROM DATA_FORM_STEP
+) AS t6
+ON t5.pagePath=t6.pagePath
+) AS t7
+-------------------------------------------------------------------------------------------------------------------------------
+),
+TEST AS (
+SELECT *
+FROM (
+SELECT MAX(eventAction) OVER (PARTITION BY CitizenShip) AS eventAction, pagePath, LandigType, CitizenShip
+FROM (
+SELECT eventAction, pagePath, LandigType, "RF" AS CitizenShip
+FROM DATA_FORM_STEP
+) AS T1
+) AS T2
+GROUP BY eventAction, pagePath, LandigType, CitizenShip 
+)
+
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+-----------------------------------------------            START QUERY           ----------------------------------------------
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+
+     
+--SELECT *
+--FROM DATA_FORM_STEP
+
+
+
+------------------------------------------------------------------------------------------------------------------------------
+--ЗАЧИСТИЛИ ШАГИ У ФОРМ С ПРИЗНАКОМ NOT RF
+SELECT date, visitNumber,	source,	medium,	deviceCategory,	eventAction, pagePath, LandigType, Interaction,	Product, CitizenShip,	InteractionStep, TYP,
+       Timing, ForFC,	ForSC, CountForFC, CountForSC, "SITE" AS FormOwner
+FROM (
+SELECT *,
+       CASE  
+           WHEN CitizenShip="NOT RF" AND LandigType="Classic" AND NOT REGEXP_CONTAINS(eventAction,R"Step 1 |Step 3 |Step 5") THEN "DEL"
+           WHEN REGEXP_CONTAINS(LandigType,R"RB") AND REGEXP_CONTAINS(eventAction,R"Step 0 of ") THEN "DEL"
+           ELSE "SAVE"
+       END AS Clean
+FROM (
+------------------------------------------------------------------------------------------------------------------------------
+--В КАЖДЫЙ ШАГ ДОБАВИЛИ КОЛИЧЕСТВО СОБЫТИЙ ПРЕДЫДУЩЕГО ШАГА
+SELECT FULL_DATA.*,
+       IF(STEPMORE1.InteractionStep IS NULL,0,STEPMORE1.InteractionStep) AS CountForSC
+FROM (  
+------------------------------------------------------------------------------------------------------------------------------
+--В КАЖДЫЙ ШАГ ДОБАВИЛИ КОЛИЧЕСТВО СОБЫТИЙ ПЕРВОГО ШАГА
+SELECT FULLDATA.*,
+       IF(STEP1.InteractionStep IS NULL,0,STEP1.InteractionStep) AS CountForFC
+FROM (   
+------------------------------------------------------------------------------------------------------------------------------
+--ВОССТАНАВЛИВАЕМ ДЛЯ КАЖДОГО СЛУЧАЯ ПОЛНОЕ КОЛИЧЕСТВО ШАГОВ
+SELECT date, visitNumber, source,	medium,	deviceCategory,	eventAction, pagePath, LandigType, Interaction, Product, CitizenShip, InteractionStep, TYP,	Timing,
+       CONCAT("Step 1 of ",CAST(SPLIT(eventAction," ")[OFFSET (3)] AS STRING)) AS ForFC,
+       CONCAT("Step ",CAST(CAST(SPLIT(eventAction," ")[OFFSET (1)] AS INT64)-1 AS STRING)," of ",CAST(SPLIT(eventAction," ")[OFFSET (3)] AS STRING)) AS ForSC 
+FROM (
+SELECT *,
+       CASE 
+           WHEN (DoubleStep>1 AND InteractionStep IS NULL AND TYP IS NULL AND Timing IS NULL) THEN "DEL"
+           WHEN (CAST(SPLIT(eventAction," ")[OFFSET (1)] AS INT64)<CAST(SPLIT(eventAction," ")[OFFSET (3)] AS INT64) AND Interaction="TYP") THEN "DEL"
+           WHEN (CAST(SPLIT(eventAction," ")[OFFSET (1)] AS INT64)=CAST(SPLIT(eventAction," ")[OFFSET (3)] AS INT64) AND Interaction="LAST INTERACTION IN STEP") THEN "DEL"
+           ELSE "SAVE"
+       END AS Clean
+FROM (       
+SELECT *,
+       COUNT(eventAction) OVER (PARTITION BY date, visitNumber, source,	medium,	deviceCategory, eventAction, pagePath, LandigType, Interaction, Product, CitizenShip) AS DoubleStep
+FROM (
+SELECT date, visitNumber,	source,	medium,	deviceCategory,
+       CASE 
+           WHEN SPLIT(eventAction," ")[OFFSET (3)]=ToBeStep THEN eventAction
+           ELSE CONCAT("Step ",SPLIT(eventAction," ")[OFFSET (1)]," of ",ToBeStep)
+       END AS eventAction,
+--        eventAction,
+        pagePath, LandigType, 
+       CASE
+           WHEN SPLIT(eventAction," ")[OFFSET (3)]=ToBeStep THEN Interaction
+           WHEN CAST(SPLIT(eventAction," ")[OFFSET (1)] AS INT64)<CAST(ToBeStep AS INT64) THEN "LAST INTERACTION IN STEP"
+           ELSE "TYP"
+       END AS Interaction,
+--       Interaction,
+       Product, CitizenShip,
+       CASE 
+           WHEN SPLIT(eventAction," ")[OFFSET (3)]=ToBeStep THEN InteractionStep
+           WHEN CAST(SPLIT(eventAction," ")[OFFSET (1)] AS INT64)<CAST(ToBeStep AS INT64) AND TYP>0 THEN TYP
+           WHEN CAST(SPLIT(eventAction," ")[OFFSET (1)] AS INT64)<CAST(ToBeStep AS INT64) AND TYP=0 THEN InteractionStep             
+           ELSE 0
+       END AS InteractionStep,  
+--       InteractionStep,
+       CASE 
+           WHEN SPLIT(eventAction," ")[OFFSET (3)]=ToBeStep THEN TYP
+           WHEN CAST(SPLIT(eventAction," ")[OFFSET (1)] AS INT64)<CAST(ToBeStep AS INT64) AND TYP>0 THEN 0
+           WHEN CAST(SPLIT(eventAction," ")[OFFSET (1)] AS INT64)=CAST(ToBeStep AS INT64) AND TYP=0 AND InteractionStep>0 THEN InteractionStep              
+           ELSE 0
+       END AS TYP, 
+--       TYP,
+--       CASE 
+--           WHEN eventAction=ToBeStep THEN Timing
+--           ELSE NULL
+--       END AS Timing
+       Timing,
+--       ToBeStep
+FROM (
+
+
+SELECT *
+FROM (
+SELECT t1.*,
+       t2.eventAction AS ToBeStep, t2.LandigType AS ToBeLandigType, t2.CitizenShip AS ToBeCitizenShip, t2.pagePath AS ToBepagePath
+FROM (       
+------------------------------------------------------------------------------------------------------------------------------
+--АГРЕГАЦИЯ DATA_BASED
+SELECT date, visitNumber, source,	medium,	deviceCategory, eventAction, pagePath, LandigType, Interaction, Product, CitizenShip,
+       SUM(InteractionStep) AS InteractionStep,
+       SUM(TYP) AS TYP,
+       Timing,
+       CONCAT("Step 1 of ",CAST(SPLIT(eventAction," ")[OFFSET (3)] AS STRING)) AS ForFC,
+       CONCAT("Step ",CAST(CAST(SPLIT(eventAction," ")[OFFSET (1)] AS INT64)-1 AS STRING)," of ",CAST(SPLIT(eventAction," ")[OFFSET (3)] AS STRING)) AS ForSC 
+FROM (       
+SELECT date, visitNumber, source,	medium,	deviceCategory, eventAction, pagePath, LandigType, Interaction, Product, CitizenShip, InteractionStep, TYP,
+       PERCENTILE_CONT(Timing, 0.5) OVER (PARTITION BY date, visitNumber, source,	medium,	deviceCategory, eventAction, pagePath,	LandigType, Product, CitizenShip) AS Timing
+FROM DATA_BASED
+) AS t1
+GROUP BY date, visitNumber, source,	medium,	deviceCategory, eventAction, pagePath, LandigType, Interaction, Product, CitizenShip, Timing
+------------------------------------------------------------------------------------------------------------------------------
+) AS t1
+CROSS JOIN (
+------------------------------------------------------------------------------------------------------------------------------
+--НОМИНАЛЬНОЕ КОЛИЧЕСТВО ШАГОВ, КОТОРОЕ ДОЛЖНО БЫТЬ В КАЖДОЙ ФОРМЕ
+SELECT eventAction, pagePath, LandigType, CitizenShip
+FROM DATA_FORM_STEP--DATA_BASED
+GROUP BY eventAction, pagePath, LandigType, CitizenShip
+------------------------------------------------------------------------------------------------------------------------------
+) AS t2
+GROUP BY date, visitNumber, source,	medium,	deviceCategory,	eventAction, pagePath, LandigType, Interaction, Product, CitizenShip, InteractionStep, TYP, Timing, ForFC, ForSC, ToBeStep, ToBeLandigType, ToBeCitizenShip, ToBepagePath
+) AS t3
+WHERE LandigType=ToBeLandigType AND pagePath=ToBepagePath --AND CitizenShip=ToBeCitizenShip 
+
+
+----      AND pagePath="/promo/vsesrazu-dc/form/" ---!!!!!!!!!!!!!!!!!!!!!!!УДАЛИТЬ
+----      AND date="20190801"                     ---!!!!!!!!!!!!!!!!!!!!!!!УДАЛИТЬ
+----      AND source="(direct)"                   ---!!!!!!!!!!!!!!!!!!!!!!!УДАЛИТЬ
+----      AND deviceCategory="desktop"            ---!!!!!!!!!!!!!!!!!!!!!!!УДАЛИТЬ
+----      AND visitNumber="Return"                ---!!!!!!!!!!!!!!!!!!!!!!!УДАЛИТЬ
+) AS t4
+GROUP BY date, visitNumber,	source,	medium,	deviceCategory,	eventAction, pagePath, LandigType, Interaction,	Product, CitizenShip,	InteractionStep, TYP,	Timing--, ToBeStep
+) AS t5
+) AS t6
+) AS t7
+WHERE Clean="SAVE"
+------------------------------------------------------------------------------------------------------------------------------
+) AS FULLDATA --<<<<<<<ЗАПОЛНЯЕМ CountForFC
+LEFT JOIN (
+------------------------------------------------------------------------------------------------------------------------------
+--АГРЕГАЦИЯ DATA_BASED ПО ПЕРВОМУ ШАГУ
+SELECT date, visitNumber, source,	medium,	deviceCategory, eventAction, pagePath, LandigType, Interaction, Product, CitizenShip,
+       SUM(InteractionStep) AS InteractionStep,
+       SUM(TYP) AS TYP,
+       Timing,
+       CONCAT("Step 1 of ",CAST(SPLIT(eventAction," ")[OFFSET (3)] AS STRING)) AS ForFC,
+       CONCAT("Step ",CAST(CAST(SPLIT(eventAction," ")[OFFSET (1)] AS INT64)-1 AS STRING)," of ",CAST(SPLIT(eventAction," ")[OFFSET (3)] AS STRING)) AS ForSC 
+FROM (       
+SELECT date, visitNumber, source,	medium,	deviceCategory, eventAction, pagePath, LandigType, Interaction, Product, CitizenShip, InteractionStep, TYP,
+       PERCENTILE_CONT(Timing, 0.5) OVER (PARTITION BY date, visitNumber, source,	medium,	deviceCategory, eventAction, pagePath,	LandigType, Product, CitizenShip) AS Timing
+FROM DATA_BASED
+) AS t1
+WHERE REGEXP_CONTAINS(eventAction,R"Step 1 of")
+GROUP BY date, visitNumber, source,	medium,	deviceCategory, eventAction, pagePath, LandigType, Interaction, Product, CitizenShip, Timing
+------------------------------------------------------------------------------------------------------------------------------
+) AS STEP1
+ON FULLDATA.date=STEP1.date AND
+   FULLDATA.visitNumber=STEP1.visitNumber AND
+   FULLDATA.source=STEP1.source AND
+   FULLDATA.medium=STEP1.medium AND
+   FULLDATA.deviceCategory=STEP1.deviceCategory AND   
+   FULLDATA.ForFC=STEP1.ForFC AND
+   FULLDATA.pagePath=STEP1.pagePath AND
+   FULLDATA.LandigType=STEP1.LandigType AND
+   FULLDATA.Product=STEP1.Product AND
+   FULLDATA.CitizenShip=STEP1.CitizenShip
+------------------------------------------------------------------------------------------------------------------------------
+) AS FULL_DATA --<<<<<<<ЗАПОЛНЯЕМ CountForSC
+LEFT JOIN (
+------------------------------------------------------------------------------------------------------------------------------
+--АГРЕГАЦИЯ DATA_BASED ПО ВСЕМ ШАГАМ
+SELECT date, visitNumber, source,	medium,	deviceCategory, eventAction, pagePath, LandigType, Interaction, Product, CitizenShip,
+       SUM(InteractionStep) AS InteractionStep,
+       SUM(TYP) AS TYP,
+       Timing,
+       CONCAT("Step 1 of ",CAST(SPLIT(eventAction," ")[OFFSET (3)] AS STRING)) AS ForFC,
+       CONCAT("Step ",CAST(CAST(SPLIT(eventAction," ")[OFFSET (1)] AS INT64)-1 AS STRING)," of ",CAST(SPLIT(eventAction," ")[OFFSET (3)] AS STRING)) AS ForSC 
+FROM (       
+SELECT date, visitNumber, source,	medium,	deviceCategory, eventAction, pagePath, LandigType, Interaction, Product, CitizenShip, InteractionStep, TYP,
+       PERCENTILE_CONT(Timing, 0.5) OVER (PARTITION BY date, visitNumber, source,	medium,	deviceCategory, eventAction, pagePath,	LandigType, Product, CitizenShip) AS Timing
+FROM DATA_BASED
+) AS t1
+--WHERE REGEXP_CONTAINS(eventAction,R"Step 1")
+GROUP BY date, visitNumber, source,	medium,	deviceCategory, eventAction, pagePath, LandigType, Interaction, Product, CitizenShip, Timing
+------------------------------------------------------------------------------------------------------------------------------
+) AS STEPMORE1
+ON FULL_DATA.date=STEPMORE1.date AND
+   FULL_DATA.visitNumber=STEPMORE1.visitNumber AND
+   FULL_DATA.source=STEPMORE1.source AND
+   FULL_DATA.medium=STEPMORE1.medium AND
+   FULL_DATA.deviceCategory=STEPMORE1.deviceCategory AND   
+   FULL_DATA.ForSC=STEPMORE1.eventAction AND
+   FULL_DATA.pagePath=STEPMORE1.pagePath AND
+   FULL_DATA.LandigType=STEPMORE1.LandigType AND
+   FULL_DATA.Product=STEPMORE1.Product AND
+   FULL_DATA.CitizenShip=STEPMORE1.CitizenShip
+GROUP BY date, visitNumber, source,	medium,	deviceCategory, eventAction, pagePath, LandigType, Interaction, Product, CitizenShip, InteractionStep, TYP,	Timing,	ForFC, ForSC,	CountForFC,	CountForSC
+------------------------------------------------------------------------------------------------------------------------------
+) AS t1
+) AS t2
+WHERE Clean="SAVE"
+------------------------------------------------------------------------------------------------------------------------------
+--ORDER BY date, fullVisitorId,	sessionId, timeHit,	hitNumber, eventAction

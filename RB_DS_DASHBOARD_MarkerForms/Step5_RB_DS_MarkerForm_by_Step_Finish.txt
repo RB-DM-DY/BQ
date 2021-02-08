@@ -1,0 +1,60 @@
+SELECT *,
+       CASE 
+           WHEN REGEXP_CONTAINS(pagePath,R"\/promo\/pl\/.*") THEN "PL"
+           WHEN REGEXP_CONTAINS(pagePath,R"\/promo\/.*-dc|dc-.*\/.*") THEN "DC"
+           ELSE "Other"
+       END AS Product
+FROM (       
+SELECT Date, Entrance, Interactions,
+       CASE
+           WHEN REGEXP_CONTAINS(eventAction,R"^Step 1.*") THEN Interactions
+           ELSE 0
+       END AS Step_1_of_6,
+       CASE
+           WHEN REGEXP_CONTAINS(eventAction,R"^Step 2.*") THEN Interactions
+           ELSE 0
+       END AS Step_2_of_6,       
+       CASE
+           WHEN REGEXP_CONTAINS(eventAction,R"^Step 3.*") THEN Interactions
+           ELSE 0
+       END AS Step_3_of_6,  
+       CASE
+           WHEN REGEXP_CONTAINS(eventAction,R"^Step 4.*") THEN Interactions
+           ELSE 0
+       END AS Step_4_of_6,    
+       CASE
+           WHEN REGEXP_CONTAINS(eventAction,R"^Step 5.*") THEN Interactions
+           ELSE 0
+       END AS Step_5_of_6,   
+       CASE
+           WHEN REGEXP_CONTAINS(eventAction,R"^Step 6.*") THEN Interactions
+           ELSE 0
+       END AS Step_6_of_6, 
+       CASE
+           WHEN REGEXP_CONTAINS(eventAction,R"5 of 5|6 of 6") THEN Interactions
+           ELSE 0
+       END AS TYP,         
+       Timing, visitNumber, source, medium, 
+       deviceCategory, eventCategory, eventAction, ForRANGE, pagePath, MaxStep, CitizenShip,
+       CASE 
+           WHEN medium="cpc" THEN "CPC"
+           WHEN medium="affiliate" THEN "AFFILIATE"        
+           WHEN REGEXP_CONTAINS(medium,R"organic|referral") THEN "ORGANIC"
+           WHEN REGEXP_CONTAINS(medium,R"none") AND REGEXP_CONTAINS(medium,R"direct") THEN "ORGANIC" 
+           ELSE "OTHER"
+       END AS ChannelGroup
+FROM (       
+SELECT *  
+FROM `raiffeisen-owox.RB_DS_Marker_Form.Step2_RB_DS_MarkerForm_by_Step_Entrance`
+
+UNION ALL
+
+SELECT *  
+FROM `raiffeisen-owox.RB_DS_Marker_Form.Step3_RB_DS_MarkerForm_by_Step_Visibility`
+
+UNION ALL
+
+SELECT *  
+FROM `raiffeisen-owox.RB_DS_Marker_Form.Step4_RB_DS_MarkerForm_by_Step_Focus`
+) AS t1
+) AS t2

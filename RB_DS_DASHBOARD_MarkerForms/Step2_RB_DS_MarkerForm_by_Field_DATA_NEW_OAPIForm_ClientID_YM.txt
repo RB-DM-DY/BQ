@@ -1,0 +1,333 @@
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+-----------------------------------------------         BUILDING TABLES          ----------------------------------------------
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+
+WITH DATE_PERIOD AS (-------<<<<<<
+SELECT --REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -6 MONTH) AS STRING),"-","") AS StartDate,
+       --CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE()) AS STRING),"1101") AS StartDate,
+       --CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE()) AS STRING),"1217") AS EndDate
+       REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -7 DAY) AS STRING),"-","") AS StartDate,
+       REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","") AS EndDate
+),
+DATA_CLIENTID_YM AS (-------<<<<<<
+SELECT *
+FROM (
+SELECT date, fullVisitorId,
+       CONCAT(fullVisitorId,'_',CAST(visitStartTime AS STRING)) AS sessionId,
+       IF(customDimensions.index=25,customDimensions.value,NULL) AS clientIDYM,
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h, DATE_PERIOD
+WHERE 
+      _TABLE_SUFFIX BETWEEN DATE_PERIOD.StartDate AND DATE_PERIOD.EndDate
+) AS t1
+WHERE clientIDYM IS NOT NULL
+GROUP BY date, fullVisitorId, sessionId, clientIDYM
+),
+DATA AS (-------<<<<<<
+SELECT *
+FROM (
+SELECT date, fullVisitorId, 
+       CONCAT(fullVisitorId,'_',CAST(visitStartTime AS STRING)) AS sessionId,
+#       IF(customDimensions.index=4,customDimensions.value,NULL) AS sessionId,
+       visitNumber, visitStartTime, 
+       CAST(ROUND(h.time/1000,0)+visitStartTime AS INT64) AS timeHit, --ПРЕОБРАЗУЕМ ВРЕМЯ ХИТА В UNIX-ФОРМАТ
+       h.hitNumber, h.type,
+       trafficSource.source, trafficSource.medium, device.deviceCategory, 
+       h.eventInfo.eventCategory, 
+       IF(REGEXP_CONTAINS(h.eventInfo.eventAction,R'Interaction: '),REPLACE(h.eventInfo.eventAction,'Interaction: ',''),h.eventInfo.eventAction) AS eventAction, 
+       h.eventInfo.eventLabel, 
+       CASE
+           WHEN STRPOS(h.page.pagePath,"?")>0 THEN REPLACE(SUBSTR(h.page.pagePath,0,STRPOS(h.page.pagePath,"?")-1),"//","/")
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"seg_") THEN REPLACE(SPLIT(h.page.pagePath,"seg_")[OFFSET (0)],"//","/")
+           WHEN REGEXP_CONTAINS(h.page.pagePath,R"//") THEN REPLACE(h.page.pagePath,"//","/")
+           ELSE h.page.pagePath
+       END AS pagePath
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h, DATE_PERIOD
+WHERE 
+      _TABLE_SUFFIX BETWEEN DATE_PERIOD.StartDate AND DATE_PERIOD.EndDate
+) AS t1
+WHERE sessionId IS NOT NULL AND 
+      REGEXP_CONTAINS(eventCategory,R"Interaction form$|Interaction: Form") AND NOT REGEXP_CONTAINS(pagePath,R".*test.*")
+--      AND REGEXP_CONTAINS(sessionId,R"439975400.1564633434_1564633862406|295678868.1562334794_1564671872114|2043708497.1565182393_1565182723364|113972316.1565181383_1565181417566|1354911194.1565171956_1565171999342|712435937.1565126654_1565127806767|1415259597.1563365497_1564645323812")
+--      AND REGEXP_CONTAINS(sessionId,R"1010704155.1567915953_1567916827451|1046702149.1568151630_1568152015817|1006979617.1568033675_1568033764288")
+--      AND pagePath="/promo/vsesrazu-dc/form/" 
+--      AND date="20190801"
+--      AND source="(direct)"
+--      AND deviceCategory="desktop"
+GROUP BY date, fullVisitorId, sessionId, visitNumber, visitStartTime, timeHit, hitNumber,	type,	source,	medium,	deviceCategory,	eventCategory, eventAction, eventLabel,	pagePath
+),
+DATA_VIEW_CLICK AS (-------<<<<<<ВЗАИМОДЕЙСТВИЯ ГДЕ НА ПЕРВОМ ШАГЕ ЕСТЬ VISIBILITY
+SELECT date, fullVisitorId, sessionId, visitNumber, visitStartTime, timeHit, hitNumber, type, source, medium, deviceCategory, eventCategory, eventAction, eventLabel, pagePath
+FROM (
+SELECT t1.*,
+       IF(t2.sessionId IS NULL,"DEL","SAVE") AS Clean
+FROM (
+SELECT *
+FROM DATA
+) AS t1
+LEFT JOIN (
+SELECT date, fullVisitorId, sessionId, pagePath
+FROM DATA
+WHERE REGEXP_CONTAINS(eventAction,R"Step 1") AND REGEXP_CONTAINS(eventLabel,R"Visibility|visibility") 
+GROUP BY date, fullVisitorId, sessionId, pagePath   
+) AS t2
+ON t1.date=t2.date AND t1.sessionId=t2.sessionId AND t1.pagePath=t2.pagePath
+) AS t3 
+WHERE Clean="SAVE"
+--ORDER BY date, fullVisitorId,	sessionId, timeHit,	hitNumber --!!!
+),
+DATA_BASED AS (
+------------------------------------------------------------------------------------------------------------------------------
+--БАЗОВАЯ ТАБЛИЦА ДЛЯ ДАШБОРДА
+SELECT *,
+       COUNT(sessionId) OVER (PARTITION BY date, visitNumber, source,	medium,	deviceCategory, eventAction, pagePath, LandigType, Product, CitizenShip) AS CountSesInStep  
+FROM (       
+SELECT t2.*,
+       IF(t3.sessionId IS NULL,"RF","NOT RF") AS CitizenShip     
+FROM (
+SELECT date, fullVisitorId,	sessionId, 
+       CASE 
+           WHEN visitNumber=1 THEN "New"
+           ELSE "Return"
+       END AS visitNumber,
+       visitStartTime,	timeHit, hitNumber,	timeHit-visitStartTime AS Timing, 
+       type,	source,	medium,	deviceCategory,	eventCategory, eventAction, eventLabel,	pagePath,
+       CASE
+           WHEN REGEXP_CONTAINS(pagePath,R"rb|vb") THEN "@RB"
+           ELSE "Classic"
+       END AS LandigType,
+       CASE 
+           WHEN CAST(SPLIT(eventAction," ")[OFFSET (1)] AS INT64)=CAST(SPLIT(eventAction," ")[OFFSET (3)] AS INT64) THEN "TYP"
+           ELSE "LAST INTERACTION IN STEP"
+       END AS Interaction,
+       `raiffeisen-owox.RB_DS_RUAKBP5.getPRODUCT_by_URI` (pagePath) AS Product,
+--       CASE 
+--           WHEN REGEXP_CONTAINS(pagePath,R'pl|auto|\/promo\/pl\/.*') THEN 'PL'
+--           WHEN REGEXP_CONTAINS(pagePath,R'dc|buyandfly|vsesrazu|cashback|\/promo\/.*-dc|dc-.*\/.*|\/dc\/|/simple/') THEN 'DC'
+--           WHEN REGEXP_CONTAINS(pagePath,R'cc|110day|110days|110') THEN 'CC'
+--           WHEN REGEXP_CONTAINS(pagePath,R'ml|ipotek(a)|999|899|mortgage') THEN 'ML'
+--           WHEN REGEXP_CONTAINS(pagePath,R'pb|premium') THEN 'PB'  
+--           WHEN REGEXP_CONTAINS(pagePath,R'deposit') THEN 'TD'
+--           WHEN REGEXP_CONTAINS(pagePath,R'saving') THEN 'SA'           
+--           WHEN REGEXP_CONTAINS(pagePath,R'payroll') THEN 'PAYROLL'  
+--           WHEN REGEXP_CONTAINS(pagePath,R'rko|sme') THEN 'SME'
+--           WHEN REGEXP_CONTAINS(pagePath,R'leasing') THEN 'LEASING'           
+--           ELSE 'Other'
+--        END AS Product,
+       CASE 
+           WHEN CAST(SPLIT(eventAction," ")[OFFSET (1)] AS INT64)<>CAST(SPLIT(eventAction," ")[OFFSET (3)] AS INT64) THEN 1
+           ELSE 0
+       END AS InteractionStep,
+       CASE 
+           WHEN CAST(SPLIT(eventAction," ")[OFFSET (1)] AS INT64)=CAST(SPLIT(eventAction," ")[OFFSET (3)] AS INT64) THEN 1
+           ELSE 0
+       END AS TYP      
+FROM (
+SELECT *, --<УНИКАЛИЗИРУЕМ ШАГИ И ИСКЛЮЧАЕМ СОБЫТИЯ ВОЗВРАТОВ НА ПРЕДЫДУЩИЙ ШАГ>
+       ROW_NUMBER() OVER (PARTITION BY date, fullVisitorId, sessionId, eventAction, pagePath ORDER BY eventAction, hitNumber) AS NumDouble,
+       COUNT(sessionId) OVER (PARTITION BY date, fullVisitorId, sessionId, eventAction, pagePath ORDER BY eventAction) AS CountDouble
+FROM DATA_VIEW_CLICK
+WHERE REGEXP_CONTAINS(eventLabel,R"Focus|Click|TYP") AND REGEXP_CONTAINS(eventAction,R"Step")
+) AS t1
+WHERE NumDouble=CountDouble AND CAST(SPLIT(eventAction," ")[OFFSET (1)] AS INT64)<=CAST(SPLIT(eventAction," ")[OFFSET (3)] AS INT64)
+) AS t2
+LEFT JOIN (
+SELECT sessionId, visitStartTime, pagePath
+FROM DATA
+WHERE REGEXP_CONTAINS(eventLabel,"Context:citizenship=NONRF|Context:citizenship=U menya net grazhdanstva RF")
+GROUP BY sessionId, visitStartTime, pagePath
+) AS t3
+ON t2.sessionId=t3.sessionId AND t2.visitStartTime=t3.visitStartTime AND t2.pagePath=t3.pagePath
+) AS t4
+------------------------------------------------------------------------------------------------------------------------------
+),
+DATA_MAX_STEP_SESSION AS (
+SELECT *
+FROM (
+SELECT sessionId, STEP,
+       MAX(STEP) OVER (PARTITION BY sessionId) AS MAX_GOING_STEP
+FROM (
+SELECT * EXCEPT(CountSesInStep),
+       CAST(SPLIT(eventAction," ")[OFFSET (1)] AS INT64) AS STEP,
+       SPLIT(SPLIT(eventLabel,"_")[OFFSET (2)],":")[OFFSET (1)] AS Field,
+FROM DATA_BASED
+) AS t1
+) AS t2 WHERE STEP=MAX_GOING_STEP
+)
+
+
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+-----------------------------------------------            START QUERY           ----------------------------------------------
+-----------------------------------------------●▬▬▬▬▬▬▬▬▬▬▬▬ஜ۩۞۩ஜ▬▬▬▬▬▬▬▬▬▬▬▬●-----------------------------------------------
+
+
+SELECT BASE.date, BASE.fullVisitorId,	BASE.sessionId,
+       DATA_CLIENTID_YM.clientIDYM AS clientIDYM,
+       BASE.visitNumber, BASE.visitStartTime,	BASE.timeHit, BASE.hitNumber,	BASE.Timing, BASE.type,
+       BASE.source, BASE.medium, BASE.deviceCategory, BASE.eventCategory,	BASE.eventAction, BASE.eventLabel, 
+       BASE.pagePath, BASE.LandigType, BASE.Interaction, BASE.Product, BASE.InteractionStep,	
+       BASE.TYP,	BASE.CitizenShip, BASE.STEP,
+       `raiffeisen-owox.RB_DS_RUAKBP5.getFIELD_by_FORM`(BASE.Field) AS Field,
+FROM (
+#SELECT date, visitNumber,	source,	medium,	deviceCategory,	eventCategory, eventAction,	pagePath,	LandigType,	Product, CitizenShip,	STEP,	Field AS OriginalField,	
+#       `raiffeisen-owox.RB_DS_RUAKBP5.getFIELD_by_FORM`(Field) AS Field,
+#       Total_Sessions, Lost_Sessions, Time_Median,
+#       FormOwner
+#FROM (
+#SELECT date, visitNumber,	source,	medium,	deviceCategory,	eventCategory, eventAction,	pagePath,	LandigType,	Product, CitizenShip,	STEP,	Field,
+#       SUM(Total_Sessions) AS Total_Sessions,
+#       SUM(Lost_Sessions) AS Lost_Sessions,
+#       SUM(Time_Median) AS Time_Median,
+#       FormOwner
+#FROM (       
+------------------------------------------------------------------------------------------------------------------------------
+--START ПОДСЧИТАЛИ КОЛИЧЕСТВО ВЫХОДОВ С СООТВЕТСТВУЮЩЕГО ПОЛЯ
+#SELECT *, "OAPI" AS FormOwner
+#FROM (
+#SELECT date, visitNumber, source, medium, deviceCategory, eventCategory,	eventAction, pagePath, LandigType, Product, CitizenShip, STEP, Field,
+#       0 AS Total_Sessions,
+#       SUM(InteractionStep) AS Lost_Sessions,
+#       PERCENTILE_CONT(Timing, 0.5) OVER(PARTITION BY date, visitNumber, source, medium, deviceCategory, eventCategory,	eventAction, pagePath, LandigType, Product, CitizenShip, STEP, Field) AS Time_Median
+#FROM (
+------------------------------------------------------------------------------------------------------------------------------
+--START УБРАЛИ СЕССИИ ГДЕ БЫЛИ TYP
+SELECT date, fullVisitorId,	sessionId, visitNumber,	visitStartTime,	timeHit, hitNumber,	Timing,	type,	source,	medium,	deviceCategory,
+       eventCategory, eventAction, eventLabel, pagePath, LandigType, Interaction,	Product, InteractionStep,	TYP, CitizenShip,	
+       STEP, Field
+FROM (       
+SELECT t1.*,
+       IF(t2.sessionId IS NULL,"SAVE","DEL") AS Clean
+FROM (       
+SELECT * EXCEPT(Clean)
+FROM (
+SELECT t1.*, t2.MAX_GOING_STEP,
+       IF(t1.STEP<t2.MAX_GOING_STEP,'DEL','SAVE') AS Clean
+FROM (
+SELECT * EXCEPT(CountSesInStep),
+       CAST(SPLIT(eventAction," ")[OFFSET (1)] AS INT64) AS STEP,
+       SPLIT(SPLIT(eventLabel,"_")[OFFSET (2)],":")[OFFSET (1)] AS Field,
+FROM DATA_BASED
+--where pagePath='/promo/active/dc/cashback/all-aud/classic/all-reg/v5/' and date='20200801'-- and eventAction='Step 1 of 7'
+) AS t1
+LEFT JOIN (
+SELECT *
+FROM DATA_MAX_STEP_SESSION
+) AS t2
+ON t1.sessionId=t2.sessionId
+) AS t3 WHERE Clean='SAVE'
+) AS t1
+LEFT JOIN (
+SELECT sessionId
+FROM DATA_BASED
+WHERE Interaction="TYP"
+GROUP BY sessionId
+) AS t2
+ON t1.sessionId=t2.sessionId
+) AS t3 WHERE Clean="SAVE"
+--END УБРАЛИ СЕССИИ ГДЕ БЫЛИ TYP
+------------------------------------------------------------------------------------------------------------------------------
+#) AS t4
+#GROUP BY date, visitNumber, source, medium, deviceCategory, eventCategory,	eventAction, pagePath, LandigType, Product, CitizenShip, STEP, Field, Timing
+#) AS t5
+--END ПОДСЧИТАЛИ КОЛИЧЕСТВО ВЫХОДОВ С СООТВЕТСТВУЮЩЕГО ПОЛЯ
+------------------------------------------------------------------------------------------------------------------------------
+
+#UNION ALL
+
+------------------------------------------------------------------------------------------------------------------------------
+--START РАССЧИТАЛИ КОЛИЧЕСТВО СЕССИЙ ПО КАЖДОМУ ШАГУ И ПОЛЮ
+#SELECT date, visitNumber, source, medium, deviceCategory, eventCategory,	eventAction, pagePath, LandigType, Product, CitizenShip, STEP, Field,
+#       SUM(InteractionStep) AS Total_Sessions,
+#       0 AS Lost_Sessions,
+#       0 AS Time_Median, 
+#       "OAPI" AS FormOwner
+#FROM (
+#SELECT * EXCEPT(CountSesInStep),
+#       CAST(SPLIT(eventAction," ")[OFFSET (1)] AS INT64) AS STEP,
+#       SPLIT(SPLIT(eventLabel,"_")[OFFSET (2)],":")[OFFSET (1)] AS Field,
+#FROM DATA_BASED
+#WHERE TYP=0
+--      and pagePath='/promo/active/dc/cashback/all-aud/classic/all-reg/v5/' and date='20200801'-- and eventAction='Step 1 of 7'
+#) AS t1
+#GROUP BY date, visitNumber, source, medium, deviceCategory, eventCategory,	eventAction, pagePath, LandigType, Product, CitizenShip, STEP, Field
+--END РАССЧИТАЛИ КОЛИЧЕСТВО СЕССИЙ ПО КАЖДОМУ ШАГУ И ПОЛЮ
+------------------------------------------------------------------------------------------------------------------------------
+#) AS t1
+#GROUP BY date, visitNumber,	source,	medium,	deviceCategory,	eventCategory, eventAction,	pagePath,	LandigType,	Product, CitizenShip,	STEP,	Field, FormOwner
+#) AS t2
+
+) AS BASE
+LEFT JOIN (
+SELECT *
+FROM DATA_CLIENTID_YM
+) AS DATA_CLIENTID_YM
+ON BASE.sessionId=DATA_CLIENTID_YM.sessionId
+
+
+
+
+
+
+
+
+--ORDER BY sessionId, STEP
+
+--UNION ALL
+
+------------------------------------------------------------------------------------------------------------------------------
+--ПОДСЧИТАЛИ КОЛИЧЕСТВО ВЗАИМОДЕЙСТВИЙ С СООТВЕТСТВУЮЩИМ ПОЛЕМ
+--SELECT date,        
+--       CASE 
+--           WHEN visitNumber=1 THEN "New"
+--           ELSE "Return"
+--       END AS visitNumber, 
+--       source, medium, deviceCategory, eventAction, pagePath, LandigType, Interaction,	Product, CitizenShip,	Field,
+--       SUM(SumInteraction) AS SumInteraction,
+--       SUM(LastInteraction) AS LastInteraction,
+--       FormOwner
+--FROM (
+--SELECT t1.*,
+--       IF(t2.sessionId IS NULL,"RF","NOT RF") AS CitizenShip,
+--       SPLIT(SPLIT(eventLabel,"_")[OFFSET (2)],":")[OFFSET (1)] AS Field,
+--       1 AS SumInteraction,
+--       0 AS LastInteraction,
+--       "OAPI" AS FormOwner 
+--FROM (
+--SELECT *,
+--       CASE
+--           WHEN REGEXP_CONTAINS(pagePath,R"rb|vb") THEN "@RB"
+--           ELSE "Classic"
+--       END AS LandigType,
+--       CASE 
+--           WHEN CAST(SPLIT(eventAction," ")[OFFSET (1)] AS INT64)=CAST(SPLIT(eventAction," ")[OFFSET (3)] AS INT64) THEN "TYP"
+--           ELSE "LAST INTERACTION IN STEP"
+--       END AS Interaction,       
+--       CASE 
+--           WHEN REGEXP_CONTAINS(pagePath,R'pl|auto|\/promo\/pl\/.*') THEN 'PL'
+--           WHEN REGEXP_CONTAINS(pagePath,R'dc|buyandfly|vsesrazu|cashback|\/promo\/.*-dc|dc-.*\/.*|\/dc\/|/simple/') THEN 'DC'
+--           WHEN REGEXP_CONTAINS(pagePath,R'cc|110day|110days|110') THEN 'CC'
+--           WHEN REGEXP_CONTAINS(pagePath,R'ml|ipotek(a)|999|899|mortgage') THEN 'ML'
+--           WHEN REGEXP_CONTAINS(pagePath,R'pb|premium') THEN 'PB'  
+--           WHEN REGEXP_CONTAINS(pagePath,R'deposit') THEN 'TD'
+--           WHEN REGEXP_CONTAINS(pagePath,R'saving') THEN 'SA'           
+--           WHEN REGEXP_CONTAINS(pagePath,R'payroll') THEN 'PAYROLL'  
+--           WHEN REGEXP_CONTAINS(pagePath,R'rko|sme') THEN 'SME'
+--           WHEN REGEXP_CONTAINS(pagePath,R'leasing') THEN 'LEASING'           
+--           ELSE 'Other'
+--        END AS Product
+--FROM DATA
+--WHERE NOT REGEXP_CONTAINS(eventLabel,R"Visibility|visibility") AND REGEXP_CONTAINS(eventAction,R"Step.*of.*")
+--) AS t1
+--LEFT JOIN (
+--SELECT sessionId, visitStartTime, pagePath
+--FROM DATA
+--WHERE REGEXP_CONTAINS(eventLabel,"Context:citizenship=NONRF|Context:citizenship=U menya net grazhdanstva RF")
+--GROUP BY sessionId, visitStartTime, pagePath
+--) AS t2
+--ON t1.sessionId=t2.sessionId AND t1.visitStartTime=t2.visitStartTime AND t1.pagePath=t2.pagePath
+--) AS t3
+--GROUP BY date, visitNumber, source, medium, deviceCategory, eventAction, pagePath, LandigType, Interaction,	Product, CitizenShip,	Field, FormOwner
+------------------------------------------------------------------------------------------------------------------------------
+--) AS t1
+--GROUP BY date, visitNumber, source,	medium,	deviceCategory,	eventAction, pagePath, LandigType, Interaction, Product, CitizenShip, Field, FormOwner
+--) AS t2
+--WHERE LastInteraction<>0

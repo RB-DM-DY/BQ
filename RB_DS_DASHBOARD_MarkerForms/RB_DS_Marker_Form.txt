@@ -1,0 +1,137 @@
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ОБРАБАТЫВАЕМ ПОЛУЧЕННЫЮ ТАБЛИЦУ НА УНИКАЛЬНОСТЬ ДЛЯ ДАЛЬНЕЙШЕЙ ТРАНСФОРМАЦИИ
+SELECT date, fullVisitorId, sessionId, visitNumber, visitStartTime, timeHit, hitNumber, type, source, medium, deviceCategory, eventCategory, eventAction, eventLabel, ForRANGE, pagePath
+FROM (
+SELECT *,
+       ROW_NUMBER() OVER (PARTITION BY date, fullVisitorId, sessionId, eventAction, ForRANGE) AS ROW
+FROM (
+SELECT date, fullVisitorId, sessionId, visitNumber, visitStartTime, timeHit, hitNumber, type, source, medium, deviceCategory,
+       IF(eventCategory IS NULL,"PAGE",eventCategory) AS eventCategory,
+       IF(eventAction IS NULL,"PAGE",eventAction) AS eventAction,
+       IF(eventLabel IS NULL,"PAGE",eventLabel) AS eventLabel,
+       CASE 
+           WHEN REGEXP_CONTAINS(type,R"PAGE") THEN "PageView"       
+           WHEN REGEXP_CONTAINS(eventLabel,R"^Label:Visibility") THEN "Visibility"
+           WHEN REGEXP_CONTAINS(eventLabel,R"^Label:Focus") THEN "Focus"
+           ELSE "OTHER"
+       END AS ForRANGE,
+       pagePath
+FROM (
+SELECT *,
+       "Visibility" AS Constant,
+       CASE
+           WHEN type="PAGE" THEN "Visibility"
+           WHEN type="EVENT" AND REGEXP_CONTAINS(eventLabel,R"^Label:Visibility|^Label:Focus") THEN "Visibility"
+           ELSE "DEL"
+       END AS Visibility
+FROM (
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ОСТАВЛЯЕМ ТОЛЬКО СОБЫТИЯ PAGE И EVENT С eventCategory = Interaction form
+SELECT date, fullVisitorId, sessionId, visitNumber, visitStartTime, timeHit, hitNumber, type, source, medium, deviceCategory, eventCategory, eventAction, eventLabel, pagePath
+FROM (
+SELECT *,
+       CASE 
+           WHEN type="PAGE" THEN 1 
+           WHEN type="EVENT" AND eventCategory="Interaction form" THEN 1
+           ELSE 0
+       END AS ONLYIF
+FROM (
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ФИЛЬТРУЕМ ТОЛЬКО ТЕ СЕССИИ ГДЕ БЫЛИ СОБЫТИЯ eventCategory = Interaction form
+SELECT t1.date AS date, t1.fullVisitorId AS fullVisitorId, t1.sessionId AS sessionId,	t1.visitNumber AS visitNumber,
+       t1.visitStartTime AS visitStartTime,	t1.timeHit AS timeHit, t1.hitNumber AS hitNumber, t1.type AS type, 
+       t1.source AS source,	t1.medium AS medium, 
+       t1.deviceCategory AS deviceCategory,	t1.eventCategory AS eventCategory, t1.eventAction AS eventAction,	t1.eventLabel AS eventLabel, t1.pagePath AS pagePath
+FROM (
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ФОРМИРУЕМ СПИСОК ВСЕХ ХИТОВ С fullVisitorId	И sessionId
+SELECT *
+FROM (
+SELECT *, CONCAT(CAST(ROW AS STRING),IF(sessionId IS NULL,"NULL","NOT DEL")) AS FILTER
+FROM (
+SELECT date, fullVisitorId, 
+       IF(customDimensions.index=4,customDimensions.value,NULL) AS sessionId,
+       visitNumber, visitStartTime, 
+       CAST(ROUND(h.time/1000,0)+visitStartTime AS INT64) AS timeHit, --ПРЕОБРАЗУЕМ ВРЕМЯ ХИТА В UNIX-ФОРМАТ
+       h.hitNumber, h.type,
+       trafficSource.source, trafficSource.medium, device.deviceCategory, 
+       h.eventInfo.eventCategory, h.eventInfo.eventAction, h.eventInfo.eventLabel, 
+       IF(STRPOS(h.page.pagePath,"?")>0,SUBSTR(h.page.pagePath,0,STRPOS(h.page.pagePath,"?")-1),h.page.pagePath) AS pagePath,
+       ROW_NUMBER() OVER (PARTITION BY date, fullVisitorId, visitNumber, h.hitNumber) AS ROW
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h
+WHERE 
+      _TABLE_SUFFIX BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'0101') AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
+
+      --h.eventInfo.eventCategory="Interaction form" 
+      --AND REGEXP_CONTAINS(h.eventInfo.eventLabel,R"Visibility")
+      --AND 
+      --fullVisitorId="5404610774648070992"
+--      REGEXP_CONTAINS(customDimensions.value,R"61869476.1522824754")
+      --ДЛЯ ТЕХ РАСЧЕТА ВХОДА h.type="PAGE" ИЛИ h.hitNumber=1
+--order by visitStartTime, h.hitNumber     
+--LIMIT 1000
+) AS t0
+) AS t1
+WHERE REGEXP_CONTAINS(FILTER,"NOT DEL")
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+) AS t1
+
+INNER JOIN (
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ФОРМИРУЕМ СПИСОК ВСЕХ ХИТОВ ГДЕ БЫЛО СОБЫТИЕ Interaction form
+SELECT *
+FROM (
+SELECT *,
+       ROW_NUMBER() OVER (PARTITION BY fullVisitorId) AS R
+FROM (
+SELECT *, CONCAT(CAST(ROW AS STRING),IF(sessionId IS NULL,"NULL","NOT DEL")) AS FILTER
+FROM (
+SELECT date, fullVisitorId, 
+       IF(customDimensions.index=4,customDimensions.value,NULL) AS sessionId,
+       visitNumber, visitStartTime, 
+       CAST(ROUND(h.time/1000,0)+visitStartTime AS INT64) AS timeHit, --ПРЕОБРАЗУЕМ ВРЕМЯ ХИТА В UNIX-ФОРМАТ
+       h.hitNumber, h.type,
+       trafficSource.source, trafficSource.medium, device.deviceCategory, 
+       h.eventInfo.eventCategory, h.eventInfo.eventAction, h.eventInfo.eventLabel, 
+       IF(STRPOS(h.page.pagePath,"?")>0,SUBSTR(h.page.pagePath,0,STRPOS(h.page.pagePath,"?")-1),h.page.pagePath) AS pagePath,
+       ROW_NUMBER() OVER (PARTITION BY date, fullVisitorId, visitNumber, h.hitNumber) AS ROW
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h
+WHERE
+      _TABLE_SUFFIX BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'0101') AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
+--h.eventInfo.eventCategory="Interaction form" 
+      --AND REGEXP_CONTAINS(h.eventInfo.eventLabel,R"Visibility")
+      --AND 
+      --fullVisitorId="5404610774648070992"
+      --ДЛЯ ТЕХ РАСЧЕТА ВХОДА h.type="PAGE" ИЛИ h.hitNumber=1
+order by date, fullVisitorId, visitNumber, h.hitNumber    
+--LIMIT 1000
+) AS t0
+) AS t1
+WHERE REGEXP_CONTAINS(FILTER,"NOT DEL") AND REGEXP_CONTAINS(eventCategory,R"Interaction form")
+) AS t2
+WHERE R=1
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+) AS t2
+ON t1.fullVisitorId=t2.fullVisitorId AND t1.pagePath=t2.pagePath
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+) AS t1
+) AS t2
+WHERE ONLYIF=1
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+) AS t1
+) AS t2
+WHERE Constant=Visibility
+) AS t3
+) AS t4
+WHERE ROW=1
+ORDER BY date, fullVisitorId, sessionId, visitStartTime, timeHit
+
+--SELECT date, fullVisitorId, 
+--       IF(customDimensions.index=4,customDimensions.value,NULL) AS customDimension4
+--FROM `raiffeisen-owox.64807083.ga_sessions_20181228`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h
+--WHERE --h.eventInfo.eventCategory="Interaction form" 
+--      --AND REGEXP_CONTAINS(h.eventInfo.eventLabel,R"Visibility")
+--      --AND 
+--      fullVisitorId="5404610774648070992"
+--      --ДЛЯ ТЕХ РАСЧЕТА ВХОДА h.type="PAGE" ИЛИ h.hitNumber=1
+--LIMIT 1000

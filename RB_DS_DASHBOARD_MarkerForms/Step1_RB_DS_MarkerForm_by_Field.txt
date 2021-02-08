@@ -1,0 +1,232 @@
+SELECT date, source, medium, deviceCategory, Step, MaxStep, pagePath, Field, CitizenShip, VisitorType, ChannelGroup, Init,
+       IF(CAST(REPLACE(Step,"Step ","") AS INT64)+1=CAST(MaxStep AS INT64) AND Field="Press button`NEXT`",0,ExitField) AS ExitField
+FROM (
+SELECT date, source, medium, deviceCategory, 
+      CONCAT("Step ",eventAction[SAFE_ORDINAL(2)]) AS Step,
+      eventAction[SAFE_ORDINAL(4)] AS MaxStep,      
+      pagePath, Field, CitizenShip, VisitorType, ChannelGroup, Init, ExitField
+FROM (
+SELECT date, source, medium, deviceCategory, SPLIT(eventAction," ") AS eventAction, pagePath,
+       Field, CitizenShip, VisitorType, ChannelGroup, Init, ExitField
+FROM (
+SELECT date, source, medium, deviceCategory, eventAction, pagePath, 
+       CASE 
+           WHEN Context="back" THEN "Press button`BACK`"
+           WHEN Context="next" THEN "Press button`NEXT`"           
+           WHEN Context="Zakrit" THEN "Press button`CLOSE`"   
+           WHEN Context="mobilePhoneConfirmation" THEN "Press button`CONFIRM MOBILE PHONE`"             
+           WHEN Context="acceptCode" THEN "Press button`ACCEPT CODE FOR CONFIRM MOBILE PHONE`"               
+           WHEN Context="birthCountry" THEN "Field `Birth country`"           
+           WHEN Context="birthday" THEN "Field `Date of birth`" 
+           WHEN Context="birthPlace" THEN "Field `Place of birth`"
+           WHEN Context="citizenship" THEN "Field `Citizenship`"
+           WHEN Context="currentAddress" THEN "Field `Сurrent address`"           
+           WHEN Context="deliveryAddress" THEN "Field `Delivery address`"              
+           WHEN Context="email" THEN "Field `Email`"    
+           WHEN Context="gender" THEN "Field `Gender`"
+           WHEN Context="mobilePhone" THEN "Field `Mobile phone`"           
+           WHEN Context="name" THEN "Field `Name`"             
+           WHEN Context="passportIssueByCode" THEN "Field `Passport issuer code`"   
+           WHEN Context="passportIssueDate" THEN "Field `Passport issue date`"             
+           WHEN Context="passportIssuePlace" THEN "Field `Passport issue place`"   
+           WHEN Context="passportSeriaNumber" THEN "Field `Passport serial number`" 
+           WHEN Context="permanentAddress" THEN "Field `Registration address`"
+           WHEN Context="permanentAddressEqualsCurrentAddress" THEN "Field `Registration address equals current address`"      
+           WHEN Context="taxResidency" THEN "Field `Tax residency`"              
+           ELSE Context 
+       END AS Field, CitizenShip, VisitorType, ChannelGroup,
+       SUM(Init) AS Init,
+       SUM(ExitField) AS ExitField
+FROM (
+SELECT date, fullVisitorId, sessionId, visitNumber, visitStartTime, timeHit, hitNumber, type, 
+       source, medium, deviceCategory, eventCategory, eventAction, pagePath, Label, Content, Context, CitizenShip,
+       IF(visitNumber=1,"New Visitor","Return Visitor") AS VisitorType,
+       CASE 
+           WHEN medium="cpc" THEN "CPC"
+           WHEN medium="affiliate" THEN "AFFILIATE"        
+           WHEN REGEXP_CONTAINS(medium,R"organic|referral") THEN "ORGANIC"
+           WHEN REGEXP_CONTAINS(medium,R"none") AND REGEXP_CONTAINS(medium,R"direct") THEN "ORGANIC" 
+           ELSE "OTHER"
+       END AS ChannelGroup,
+       Init, IF(NumberInitField=CountInitField,1,0) AS ExitField      
+FROM (
+SELECT date, fullVisitorId, sessionId, visitNumber, visitStartTime, timeHit, hitNumber, type, 
+       source, medium, deviceCategory, eventCategory, eventAction, pagePath, Label, Content, Context, CitizenShip,
+       1 AS Init,
+       ROW_NUMBER() OVER (PARTITION BY date, sessionId, pagePath ORDER BY hitNumber) AS NumberInitField,
+       COUNT(sessionId) OVER (PARTITION BY date, sessionId) AS CountInitField
+FROM (
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ДОБАВЛЯЕМ ПРИЗНАК ГРАЖДАНСТВА
+SELECT t1.date AS date, t1.fullVisitorId AS fullVisitorId, t1.sessionId AS sessionId, t1.visitNumber AS visitNumber, t1.visitStartTime AS visitStartTime,
+       t1.timeHit AS timeHit, t1.hitNumber AS hitNumber, t1.type AS type, t1.source AS source, t1.medium AS medium, t1.deviceCategory AS deviceCategory,
+       t1.eventCategory AS eventCategory, t1.eventAction AS eventAction, t1.pagePath AS pagePath, t1.Label AS Label, t1.Content AS Content, t1.Context AS Context, t1.Error AS Error,
+       t1.Success AS Success, IF(t2.sessionId IS NULL,"RF","NOT RF") AS CitizenShip 
+FROM (
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ОБРАТКА ПОЛЯ eventLabel С КОНКРЕТНЫМИ ПОЛЯМИ ФОРМЫ
+SELECT date, fullVisitorId,	sessionId, visitNumber, visitStartTime,	timeHit, hitNumber, type,	source,	medium,
+       deviceCategory, eventCategory, eventAction, pagePath, 
+       Label,	Content, Context, Error, Success
+FROM (       
+SELECT *,
+       ROW_NUMBER() OVER (PARTITION BY sessionId, eventAction, pagePath, Label, Context) AS ROW
+FROM (
+SELECT date, fullVisitorId, sessionId, visitNumber, visitStartTime, timeHit, hitNumber, type, source, medium, deviceCategory, eventCategory, eventAction, pagePath,
+       IF(STRPOS(Label,"=")>0,SUBSTR(Label,0,STRPOS(Label,"=")-1),Label) AS Label,        
+       IF(STRPOS(Content,"=")>0,SUBSTR(Content,0,STRPOS(Content,"=")-1),Content) AS Content,       
+       IF(STRPOS(Context,"=")>0,SUBSTR(Context,0,STRPOS(Context,"=")-1),Context) AS Context,
+       IF(STRPOS(Error,"=")>0,SUBSTR(Error,0,STRPOS(Error,"=")-1),Error) AS Error,       
+       IF(STRPOS(Success,"=")>0,SUBSTR(Success,0,STRPOS(Success,"=")-1),Success) AS Success
+FROM (
+SELECT date, fullVisitorId, sessionId, visitNumber, visitStartTime, timeHit, hitNumber, type, source, medium, deviceCategory, eventCategory, eventAction, eventLabel, pagePath,
+       REPLACE(SPLIT[SAFE_ORDINAL(1)],"Label:","") AS Label,
+       REPLACE(SPLIT[SAFE_ORDINAL(2)],"Content:","") AS Content,
+       REPLACE(SPLIT[SAFE_ORDINAL(3)],"Context:","") AS Context,
+       REPLACE(SPLIT[SAFE_ORDINAL(4)],"Error:","") AS Error,
+       REPLACE(SPLIT[SAFE_ORDINAL(5)],"Success:","") AS Success,
+       IF(REGEXP_CONTAINS(eventLabel,R"Visibility|UnFocus|Click delete|Choice value selector|termsAndConditionsLink|changeMobilePhoneLink|changeToMobilePhone"),"TRUE","FALSE") AS OnlyField
+FROM (       
+SELECT *,
+       SPLIT(eventLabel,"_") AS SPLIT
+FROM (
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ОСТАВЛЯЕМ ТОЛЬКО СОБЫТИЯ PAGE И EVENT С eventCategory = Interaction form
+SELECT date, fullVisitorId, sessionId, visitNumber, visitStartTime, timeHit, hitNumber, type, source, medium, deviceCategory, eventCategory, eventAction, eventLabel, pagePath
+FROM (
+SELECT *,
+       CASE 
+           WHEN type="PAGE" THEN 1 
+           WHEN type="EVENT" AND eventCategory="Interaction form" THEN 1
+           ELSE 0
+       END AS ONLYIF
+FROM (
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ФИЛЬТРУЕМ ТОЛЬКО ХИТЫ ТЕХ СЕССИЙ ГДЕ БЫЛИ СОБЫТИЯ eventCategory = Interaction form
+SELECT *
+FROM (
+SELECT t1.date AS date, t1.fullVisitorId AS fullVisitorId, t1.sessionId AS sessionId,	t1.visitNumber AS visitNumber,
+       t1.visitStartTime AS visitStartTime,	t1.timeHit AS timeHit, t1.hitNumber AS hitNumber, t1.type AS type, 
+       t1.source AS source,	t1.medium AS medium, 
+       t1.deviceCategory AS deviceCategory,	t1.eventCategory AS eventCategory, t1.eventAction AS eventAction,	t1.eventLabel AS eventLabel, t1.pagePath AS pagePath,
+       ROW_NUMBER() OVER (PARTITION BY t1.date, t1.fullVisitorId, t1.sessionId, t1.visitNumber, t1.hitNumber, t1.timeHit) AS ROW
+FROM (
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ФОРМИРУЕМ СПИСОК ВСЕХ ХИТОВ С fullVisitorId	И sessionId 
+SELECT *
+FROM (
+SELECT *, CONCAT(CAST(ROW AS STRING),IF(sessionId IS NULL,"NULL","NOT DEL")) AS FILTER
+FROM (
+SELECT date, fullVisitorId, 
+       IF(customDimensions.index=4,customDimensions.value,NULL) AS sessionId,
+       visitNumber, visitStartTime, 
+       CAST(ROUND(h.time/1000,0)+visitStartTime AS INT64) AS timeHit, --ПРЕОБРАЗУЕМ ВРЕМЯ ХИТА В UNIX-ФОРМАТ
+       h.hitNumber, h.type,
+       trafficSource.source, trafficSource.medium, device.deviceCategory, 
+       h.eventInfo.eventCategory, h.eventInfo.eventAction, h.eventInfo.eventLabel, 
+       IF(STRPOS(h.page.pagePath,"?")>0,SUBSTR(h.page.pagePath,0,STRPOS(h.page.pagePath,"?")-1),h.page.pagePath) AS pagePath,
+       ROW_NUMBER() OVER (PARTITION BY date, fullVisitorId, visitNumber, h.hitNumber) AS ROW
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h
+WHERE 
+      _TABLE_SUFFIX BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'0101') AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
+--      _TABLE_SUFFIX BETWEEN '20181223' AND '20181229'
+) AS t0
+) AS t1
+WHERE REGEXP_CONTAINS(FILTER,"NOT DEL")
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+) AS t1
+
+INNER JOIN (
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ФОРМИРУЕМ СПИСОК ВСЕХ fullVisitorId КОТОРЫЕ ВЗИМОДЕЙСТВОВАЛИ С Interaction form (ПО СУТИ НАМ НУЖНЫ СТРАНИЦЫ С Interaction form)
+SELECT *
+FROM (
+SELECT *,
+       ROW_NUMBER() OVER (PARTITION BY fullVisitorId) AS R
+FROM (
+SELECT *, CONCAT(CAST(ROW AS STRING),IF(sessionId IS NULL,"NULL","NOT DEL")) AS FILTER
+FROM (
+SELECT date, fullVisitorId, 
+       IF(customDimensions.index=4,customDimensions.value,NULL) AS sessionId,
+       visitNumber, visitStartTime, 
+       CAST(ROUND(h.time/1000,0)+visitStartTime AS INT64) AS timeHit, --ПРЕОБРАЗУЕМ ВРЕМЯ ХИТА В UNIX-ФОРМАТ
+       h.hitNumber, h.type,
+       trafficSource.source, trafficSource.medium, device.deviceCategory, 
+       h.eventInfo.eventCategory, h.eventInfo.eventAction, h.eventInfo.eventLabel, 
+       IF(STRPOS(h.page.pagePath,"?")>0,SUBSTR(h.page.pagePath,0,STRPOS(h.page.pagePath,"?")-1),h.page.pagePath) AS pagePath,
+       ROW_NUMBER() OVER (PARTITION BY date, fullVisitorId, visitNumber, h.hitNumber) AS ROW
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h
+WHERE
+      _TABLE_SUFFIX BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'0101') AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
+--      _TABLE_SUFFIX BETWEEN '20181223' AND '20181229'
+--      AND REGEXP_CONTAINS(h.page.pagePath,R"/promo/pl/10/form/")
+--      AND REGEXP_CONTAINS(h.page.pagePath,R"/promo/vsesrazu-dc/form-mgm/")  
+) AS t0
+) AS t1
+WHERE REGEXP_CONTAINS(FILTER,"NOT DEL") AND REGEXP_CONTAINS(eventCategory,R"Interaction form")
+) AS t2
+WHERE R=1
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+) AS t2
+ON t1.pagePath=t2.pagePath
+) AS t1
+WHERE ROW=1 --and sessionId="1024588056.1546068575_1546071866776"
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+) AS t1
+) AS t2
+WHERE ONLYIF=1
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+) AS t1
+WHERE type="EVENT" 
+) AS t2
+) AS t3
+WHERE OnlyField = "FALSE"
+) AS t4
+) AS t5
+WHERE ROW=1 AND Content="Form"
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+) AS t1
+
+LEFT JOIN (
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--ФОРМИРУЕМ СПИСОК ВСЕХ fullVisitorId КОТОРЫЕ ЯВЛЯЮТСЯ НЕ РЕЗЕДЕНТАМИ РФ
+SELECT date, fullVisitorId,	sessionId, visitNumber,	visitStartTime,	timeHit, hitNumber,	type,	source,	medium,	deviceCategory,	eventCategory, eventAction,	eventLabel,	pagePath
+FROM (
+SELECT *,
+       ROW_NUMBER() OVER (PARTITION BY fullVisitorId) AS R
+FROM (
+SELECT *, CONCAT(CAST(ROW AS STRING),IF(sessionId IS NULL,"NULL","NOT DEL")) AS FILTER
+FROM (
+SELECT date, fullVisitorId, 
+       IF(customDimensions.index=4,customDimensions.value,NULL) AS sessionId,
+       visitNumber, visitStartTime, 
+       CAST(ROUND(h.time/1000,0)+visitStartTime AS INT64) AS timeHit, --ПРЕОБРАЗУЕМ ВРЕМЯ ХИТА В UNIX-ФОРМАТ
+       h.hitNumber, h.type,
+       trafficSource.source, trafficSource.medium, device.deviceCategory, 
+       h.eventInfo.eventCategory, h.eventInfo.eventAction, h.eventInfo.eventLabel, 
+       IF(STRPOS(h.page.pagePath,"?")>0,SUBSTR(h.page.pagePath,0,STRPOS(h.page.pagePath,"?")-1),h.page.pagePath) AS pagePath,
+       ROW_NUMBER() OVER (PARTITION BY date, fullVisitorId, visitNumber, h.hitNumber) AS ROW
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h
+WHERE
+      _TABLE_SUFFIX BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'0101') AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
+      AND REGEXP_CONTAINS(h.eventInfo.eventLabel,"Context:citizenship=NONRF")
+--      _TABLE_SUFFIX BETWEEN '20181223' AND '20181229'
+--      AND REGEXP_CONTAINS(h.page.pagePath,R"/promo/pl/10/form/")
+--      AND REGEXP_CONTAINS(h.page.pagePath,R"/promo/vsesrazu-dc/form-mgm/")  
+) AS t0
+) AS t1
+WHERE REGEXP_CONTAINS(FILTER,"NOT DEL") AND REGEXP_CONTAINS(eventCategory,R"Interaction form")
+) AS t2
+WHERE R=1
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+) AS t2
+ON t1.sessionId=t2.sessionId AND t1.visitStartTime=t2.visitStartTime AND t1.pagePath=t2.pagePath
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+) AS t1
+) AS t2
+) AS t3
+GROUP BY date, source, medium, deviceCategory, eventAction,	pagePath, Context, VisitorType, ChannelGroup, CitizenShip
+) AS t4
+) AS t5
+) AS t6
+--ORDER BY sessionId, hitNumber
