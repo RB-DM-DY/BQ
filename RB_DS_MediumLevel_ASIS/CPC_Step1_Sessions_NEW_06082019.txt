@@ -62,16 +62,18 @@ SELECT date, source, medium,
        adCost
 FROM (
 SELECT date, source, medium, campaign, SUM(adCost) AS adCost
-FROM ( SELECT * FROM `raiffeisen-owox.OWOXBI_CostData.CostData_*`
+FROM ( 
+      /*Косты до декабря 2020 по импорту из ГА - после по прямому стриму*/
+      SELECT * FROM `raiffeisen-owox.OWOXBI_CostData.CostData_*`
       WHERE 
-      _TABLE_SUFFIX BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'0101') AND '20201031'
+      _TABLE_SUFFIX BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'0101') AND '20201130'
       AND `raiffeisen-owox.Common_query.getMediumUTM`(medium) = "PAID" 
       AND adCost > 0
       AND NOT campaign LIKE "%pr:sme%"
       UNION ALL
       SELECT * FROM `raiffeisen-owox.OWOXBI_CostData.CostData_*`
       WHERE 
-      _TABLE_SUFFIX BETWEEN '20201101' AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
+      _TABLE_SUFFIX BETWEEN '20201201' AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
       AND `raiffeisen-owox.Common_query.getMediumUTM`(medium) = "PAID" 
       AND adCost > 0
       AND NOT (source = "yandex" OR source = "facebook")
@@ -83,16 +85,17 @@ UNION ALL
 /*Косты FB прямой трансфер BQ*/
 SELECT FORMAT_DATE('%Y%m%d', date) date ,'facebook' source,'cpc' medium, `raiffeisen-owox.Common_query.replaceUnicode`( adset.name ) CampaignName, SUM( spend ) Cost
 FROM `raiffeisen-owox.OWOXBI_TRANSFER_FACEBOOK_ADS.facebook_AdCostData`
-WHERE Date >= '2020-11-01'
+WHERE Date >= '2020-12-01'
 GROUP BY date, source, medium, CampaignName
 
 UNION ALL 	
 /*Косты pulse spreadsheet трансфер BQ*/
-SELECT FORMAT_DATE('%Y%m%d',PARSE_DATE('%d.%m.%Y', date)) date ,'pulse' source,'cpc' medium, `raiffeisen-owox.Common_query.replaceUnicode`( campaign ) CampaignName, SUM( cost ) Cost
+SELECT FORMAT_DATE('%Y%m%d',PARSE_DATE('%Y-%m-%d', date)) date ,'pulse' source,'cpc' medium, `raiffeisen-owox.Common_query.replaceUnicode`( campaign ) CampaignName, SUM( cost ) Cost
 FROM `raiffeisen-owox.OWOXBI_CostData.pulse_cost_data`
 GROUP BY date, source, medium, CampaignName
 
 UNION ALL
+/*Косты Yandex прямой трансфер BQ*/
 SELECT date, source, medium, CampaignName, SUM(Cost) AS Cost
 FROM (
 SELECT FORMAT_DATE('%Y%m%d', date) date ,'yandex' source,'cpc' medium,
@@ -115,7 +118,7 @@ GROUP BY date, source, medium, CampaignName
 ) AS t2
 
 UNION ALL
-
+/*Косты DZEN файлы csv трансфер BQ*/
 SELECT FORMAT_DATE('%Y%m%d', date) date,"NULL" AS sessionId,SUM(cost) adCost,'dzen' source,'cpc' medium, campaign,CONCAT(CAST(date AS STRING),'dzen','cpc',campaign)	CostConCat
 FROM(
 SELECT PARSE_DATE('%d.%m.%Y', SREZ_NA_DATU) date, `raiffeisen-owox.Common_query.replaceUnicode`(KAMPANIYA) campaign, CAST(REPLACE( REPLACE( RASKHOD,',','.'),' ','') AS FLOAT64) cost 
