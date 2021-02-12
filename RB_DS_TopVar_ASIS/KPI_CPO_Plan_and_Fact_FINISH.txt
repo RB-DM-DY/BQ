@@ -31,7 +31,7 @@ SELECT *
 FROM DATA
 ) AS t1
 ) AS t2
-WHERE DateCurYear IS NOT NULL
+WHERE DateCurYear IS NOT NULL AND DateCurYear<DATE_ADD(CURRENT_DATE(), INTERVAL 0 DAY)
 ),
 MtM_AGRIGATE_TABLE AS (
 SELECT DateNextMonth AS Date, EXTRACT(MONTH FROM DateNextMonth) AS Month, EXTRACT(YEAR FROM DateNextMonth) AS Year,
@@ -54,6 +54,7 @@ FROM DATA
 ) AS t1 --where extract(month from Date)=1
 ) AS t2 --СЧИТАЕМ ПОЛНЫЙ ПРОШЛЫЙ МЕСЯЦ,Т.Е. ТЕКУЩИЙ ФЕВРАЛЬ 28 ДНЕЙ, ПРЕДЫДУЩИЙ ЯНВАРЬ 31 ДЕНЬ
         --ДАТЫ С 28.01 ПО 31.01 ОТНЕСЕНЫ К 28.02
+WHERE DateNextMonth<DATE_ADD(CURRENT_DATE(), INTERVAL 0 DAY)        
 ),
 DATA_UNION AS (
 SELECT *
@@ -106,8 +107,11 @@ FROM MtM_AGRIGATE_TABLE
 --       DATA_UNION.YtYFactSessions, DATA_UNION.YtYFactLeads,	DATA_UNION.YtYFactQLeads, DATA_UNION.YtYFactIssues,	DATA_UNION.YtYFactCost,
 --       DATA_UNION.MtMFactSessions, DATA_UNION.MtMFactLeads, DATA_UNION.MtMFactQLeads, DATA_UNION.MtMFactIssues,	DATA_UNION.MtMFactCost
 --FROM (
+
 SELECT *
 FROM DATA_UNION
+WHERE Year BETWEEN 2018 AND extract(YEAR from CURRENT_DATE())
+
 --) AS DATA_UNION
 --LEFT JOIN (
 --SELECT *
