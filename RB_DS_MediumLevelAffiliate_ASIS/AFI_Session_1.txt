@@ -3,7 +3,11 @@ SELECT date,	source,	campaign, adContent,	ifnull(NTB,"yes") as NTB, PLATFORM,
 FROM (
   SELECT DISTINCT * 
   FROM (
-    SELECT date, source, campaign, adContent, sessionId,
+    SELECT date, 
+    TRIM(LOWER(source)) source, 
+    TRIM(LOWER(campaign)) campaign, 
+    TRIM(LOWER(adContent)) adContent, 
+    sessionId,
     "web" as PLATFORM
     FROM `raiffeisen-owox.RB_DS_MediumLevelAffiliate_ASIS.SessionAnalytics` AS an
     WHERE an.medium  = "affiliate" and not sessionId  is null --and an.sessionId = "479048476.1536211019_1536211323478"
