@@ -1,0 +1,38 @@
+WITH 
+  TARIFF AS (
+      SELECT 
+        PARSE_DATE("%Y%m%d",_TABLE_SUFFIX) date, `raiffeisen-owox.Common_query.getSourceUTM`(Partner) source, Product product_line, IFNULL(Status,'') status, IFNULL(Approval,'') approval, costPerOrder
+      FROM 
+        `raiffeisen-owox.RB_DS_MediumLevelAffiliate_ASIS.price_list_*` 
+  ),
+  LEADS AS (
+      SELECT 
+        date, product_line, product, source, platform, utm_medium, ntb, status, approval, utm_campaign, utm_content, utm_term, utm_source,
+        COUNT( LEAD_ID ) leads
+      FROM 
+        `raiffeisen-owox.RB_DS_MediumLevelAffiliate_ASIS.LeadsCRM`
+      GROUP BY 
+         DATE, PRODUCT_LINE, PRODUCT, SOURCE , PLATFORM, UTM_MEDIUM, NTB, STATUS, APPROVAL, UTM_CAMPAIGN, UTM_CONTENT, UTM_TERM, UTM_SOURCE
+  )
+
+/*Основной код*/
+
+SELECT 
+  * EXCEPT(priceList) , 
+  ARRAY(SELECT  priceList
+        FROM UNNEST(priceList) priceList
+        WHERE priceList.d < date)[SAFE_OFFSET(0)] priceListCost
+FROM(
+  SELECT 
+    * 
+  FROM LEADS 
+  LEFT JOIN ( 
+    SELECT 
+      product_line,	status,	approval,	source ,ARRAY_AGG(STRUCT(date as d, CostPerOrder as c)  ORDER BY date DESC) priceList
+    FROM TARIFF
+    GROUP BY 
+      product_line,	status,	approval,	source 
+  )
+  USING(product_line,status,approval,source)
+  --WHERE NOT datearr IS NULL
+)
