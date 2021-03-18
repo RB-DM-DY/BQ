@@ -1,20 +1,28 @@
-WITH TARIFF AS (
-      SELECT PARSE_DATE("%Y%m%d",_TABLE_SUFFIX) date, `raiffeisen-owox.Common_query.getSourceUTM`(Partner) Partner, Product, IFNULL(Status,'') Status, IFNULL(Approval,'') Approval, CostPerOrder
-      FROM `raiffeisen-owox.RB_DS_MediumLevelAffiliate_ASIS.price_list_*` 
-      ),
-     LEADS AS (
-      SELECT DATE(LeadDate) DATE, PRODUCT_LINE PRODUCT,IFNULL(STATUS,'') STATUS, 
+WITH 
+  TARIFF AS (
+      SELECT 
+        PARSE_DATE("%Y%m%d",_TABLE_SUFFIX) date, `raiffeisen-owox.Common_query.getSourceUTM`(Partner) Partner, Product, IFNULL(Status,'') Status, IFNULL(Approval,'') Approval, CostPerOrder
+      FROM 
+        `raiffeisen-owox.RB_DS_MediumLevelAffiliate_ASIS.price_list_*` 
+  ),
+  LEADS AS (
+      SELECT 
+        DATE(LeadDate) DATE, PRODUCT_LINE PRODUCT,IFNULL(STATUS,'') STATUS, 
         IFNULL(APPROVAL,'') APPROVAL,
         `raiffeisen-owox.Common_query.getSourceUTM`(UTM_SOURCE) PARTNER,
         COUNT(leadid) LEADS
-      FROM `raiffeisen-owox.Orders_CRM.CRM_orders`
+      FROM 
+        `raiffeisen-owox.Orders_CRM.CRM_orders`
       WHERE  true
-          AND DATE(LeadDate) BETWEEN '2021-01-01' AND '2021-01-31'--DATE_ADD(DATE_TRUNC(DATE(LeadDate), YEAR) , INTERVAL -1 YEAR) AND DATE_ADD(CURRENT_DATE() , INTERVAL -1 DAY)
-          AND LOWER(UTM_MEDIUM) = 'affiliate'
-      GROUP BY DATE, PRODUCT_LINE, STATUS, APPROVAL, UTM_SOURCE
-      )
+        AND DATE(LeadDate) BETWEEN '2021-01-01' AND '2021-01-31'--DATE_ADD(DATE_TRUNC(DATE(LeadDate), YEAR) , INTERVAL -1 YEAR) AND DATE_ADD(CURRENT_DATE() , INTERVAL -1 DAY)
+        AND LOWER(UTM_MEDIUM) = 'affiliate'
+      GROUP BY 
+        DATE, PRODUCT_LINE, STATUS, APPROVAL, UTM_SOURCE
+  )
 
-SELECT EXTRACT(Month FROM date) Month,priceListCost.d	PriceListDate,	Partner,	Product,	Status,	Approval,	SUM(Leads) Leads, IFNULL(priceListCost.c, 0)	Cost
+/*Основной код*/
+SELECT 
+  EXTRACT(Month FROM date) Month,priceListCost.d	PriceListDate,	Partner,	Product,	Status,	Approval,	SUM(Leads) Leads, IFNULL(priceListCost.c, 0)	Cost
 FROM(
   SELECT * EXCEPT(priceList) , ARRAY(SELECT  priceList
           FROM UNNEST(priceList) priceList
@@ -24,9 +32,11 @@ FROM(
     LEFT JOIN ( 
     SELECT product,	status,	approval,	partner ,ARRAY_AGG(STRUCT(date as d, CostPerOrder as c)  ORDER BY date DESC) priceList
     FROM TARIFF
-    GROUP BY product,	status,	approval,	partner )
+    GROUP BY 
+      product,	status,	approval,	partner )
     USING(product,status,approval,partner)
     --WHERE NOT datearr IS NULL
   )
 )
-GROUP BY Month, PriceListDate,	Partner,	Product,	Status,	Approval, Cost
+GROUP BY 
+  Month, PriceListDate,	Partner,	Product,	Status,	Approval, Cost
