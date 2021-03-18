@@ -3,9 +3,10 @@ SELECT date as Date,	source as Source,	campaign as Campaign,	adContent as Conten
   SUM(Leads) as Leads,
   SUM(QLeads) as QLeads,
   SUM(Issues) as Issues,
-  SUM( Cost) as Costs
+  SUM( Cost) as Costs,
+  0 as priceCost
 FROM (
-  /**/
+  /*Подключение расчета сеансов*/
   SELECT date, source, campaign,	adContent,	NTB,  PLATFORM,
     `raiffeisen-owox.Common_query.getSourceUTM`(source) as source_name,
     `raiffeisen-owox.Common_query.getProductCampaign`(campaign) as product,
@@ -18,7 +19,7 @@ FROM (
   GROUP BY  date,	source,	campaign,	adContent, NTB, PLATFORM, product, source_name
   /**/
   UNION ALL  
-  /**/
+  /*Подключение расчета лидов с фактическими костами*/
   SELECT cpl.date, cpl.source, cpl.campaign, cpl.adContent, cpl.NTB , cpl.PLATFORM , cpl.source_name , cpl.product ,
     0 as sessions,
     cpl.leads ,
@@ -44,7 +45,7 @@ FROM (
   LEFT JOIN  `raiffeisen-owox.RB_DS_MediumLevelAffiliate_ASIS.AFI_Cost_1` as cs1 ON cpl.keyc = cs1.key
   /**/
   UNION ALL 
-  /**/
+  /*Подключение расчета костов по прайслистам*/
   SELECT * FROM RB_DS_MediumLevelAffiliate_ASIS.CR_Grid_Cost_Calculate
   )
 GROUP BY  date,	source,	source_name, campaign,	adContent,	NTB, PLATFORM, Product
