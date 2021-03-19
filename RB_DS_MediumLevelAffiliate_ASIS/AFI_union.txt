@@ -1,11 +1,11 @@
 SELECT 
-  date as Date,	source as Source,	campaign as Campaign,	adContent as Content, NTB, PLATFORM, product as Product, source_name,
+  date as Date,	LOWER(TRIM(source)) as Source, LOWER(TRIM(campaign)) as Campaign,	LOWER(TRIM(adContent)) as Content, LOWER(TRIM(NTB)) NTB, LOWER(TRIM(PLATFORM)) PLATFORM, LOWER(TRIM(product)) as Product, LOWER(TRIM(source_name)) source_name,
   SUM(sessions) as Sessions,
   SUM(Leads) as Leads,
   SUM(QLeads) as QLeads,
   SUM(Issues) as Issues,
   SUM( Cost) as Costs,
-  0 as priceCost
+  SUM( actualCost) actualCost
 FROM (
   /*Подключение расчета сеансов*/
   SELECT 
@@ -16,23 +16,38 @@ FROM (
     0 as leads,
     0 as qleads,
     0 as issues,
-    0 as Cost,
-    0 as priceCost
+    0 as cost,
+    0 as actualCost
   FROM 
     `raiffeisen-owox.RB_DS_MediumLevelAffiliate_ASIS.AFI_Session_1` as an
   GROUP BY  
     date,	source,	campaign,	adContent, NTB, PLATFORM, product, source_name
   /**/
   UNION ALL  
-  /*Подключение расчета лидов с фактическими костами*/
+  /*Подключение расчета лидов*/
+--   SELECT 
+--     Date as date, Source as source, UTM_CAMPAIGN as campaign, UTM_CONTENT as adContent, NTB, PLATFORM,
+--     `raiffeisen-owox.Common_query.getSourceUTM`(Source) as source_name,
+--     `raiffeisen-owox.Common_query.getProductCRM`(ProductLine) as product,
+--     0 as sessions,
+--     SUM(Leads) as leads,
+--     SUM(QLeads) as qleads,
+--     SUM(Issues) as issues,
+--     0 as factCost,
+--     0 as priceCost
+--   FROM 
+--     `raiffeisen-owox.RB_DS_MediumLevelAffiliate_ASIS.AFI_Leads` as crm
+--   GROUP BY  
+--     date,	source,	campaign,	adContent,	NTB, PLATFORM, product
   SELECT 
     cpl.date, cpl.source, cpl.campaign, cpl.adContent, cpl.NTB , cpl.PLATFORM , cpl.source_name , cpl.product ,
     0 as sessions,
     cpl.leads ,
     cpl.qleads ,
     cpl.issues ,
-    leads * IFNULL( cs1.CPL,0) as Cost,
-    0 as priceCost
+    0 as Cost,
+    leads * IFNULL( cs1.CPL,0) as actualCost,
+    
   FROM (
     SELECT 
       DISTINCT *,
@@ -58,9 +73,18 @@ FROM (
   UNION ALL 
   /*Подключение расчета костов по прайслистам*/
   SELECT 
-    *, 
-    0 as priceCost 
-  FROM RB_DS_MediumLevelAffiliate_ASIS.CR_Grid_Cost_Calculate
+    date, utm_source, utm_campaign, utm_content, ntb, platform, source, product,
+    0 as sessions,
+    0 as leads,
+    0 as qleads,
+    0 as issues,
+    SUM( priceListCost ) priceCost,
+    0 as actualCost,
+    
+  FROM 
+    `raiffeisen-owox.RB_DS_MediumLevelAffiliate_ASIS.AFI_COST_PRICELIST`
+  GROUP BY 
+    date, utm_source, utm_campaign, utm_content, ntb, platform, source, product
   )
 GROUP BY  
   date,	source,	source_name, campaign,	adContent,	NTB, PLATFORM, Product
