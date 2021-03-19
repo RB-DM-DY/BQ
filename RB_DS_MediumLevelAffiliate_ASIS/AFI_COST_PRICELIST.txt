@@ -16,23 +16,26 @@ WITH
   )
 
 /*Основной код*/
-
 SELECT 
-  * EXCEPT(priceList) , 
-  ARRAY(SELECT  priceList
-        FROM UNNEST(priceList) priceList
-        WHERE priceList.d < date)[SAFE_OFFSET(0)] priceListCost
+  * EXCEPT(priceListCost) , priceListCost.d, priceListCost.c * leads priceListCost
 FROM(
   SELECT 
-    * 
-  FROM LEADS 
-  LEFT JOIN ( 
+    * EXCEPT(priceList) , 
+    ARRAY(SELECT  priceList
+          FROM UNNEST(priceList) priceList
+          WHERE priceList.d < date)[SAFE_OFFSET(0)] priceListCost
+  FROM(
     SELECT 
-      product_line,	status,	approval,	source ,ARRAY_AGG(STRUCT(date as d, CostPerOrder as c)  ORDER BY date DESC) priceList
-    FROM TARIFF
-    GROUP BY 
-      product_line,	status,	approval,	source 
-  )
-  USING(product_line,status,approval,source)
-  --WHERE NOT datearr IS NULL
+      * 
+    FROM LEADS 
+    LEFT JOIN ( 
+      SELECT 
+        product_line,	status,	approval,	source ,ARRAY_AGG(STRUCT(date as d, CostPerOrder as c)  ORDER BY date DESC) priceList
+      FROM TARIFF
+      GROUP BY 
+        product_line,	status,	approval,	source 
+    )
+    USING(product_line,status,approval,source)
+    --WHERE NOT datearr IS NULL
+  ) 
 )
