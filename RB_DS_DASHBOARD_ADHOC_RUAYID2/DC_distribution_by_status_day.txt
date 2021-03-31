@@ -1,24 +1,27 @@
-SELECT  week_start, processing_channel, status, ntb, weeks_passed, medium,
+SELECT  week_start, processing_channel, status, ntb,VB, weeks_passed, status_week_start, medium,
 countif(STATUS = 'lead') lead_count,
 countif(STATUS = 'open') as open_count,
 countif(STATUS = 'delivered') as delivered_count,
 countif(STATUS = 'active') as active_count
 FROM(
-  SELECT  DATE_TRUNC(DATE(LEAD_DATE), ISOWEEK) week_start, 
+  SELECT  DATE_TRUNC(DATE(LEAD_DATE), ISOWEEK) week_start, DATE_TRUNC(DATE(UPD_DATE), ISOWEEK) status_week_start,
+  IF( STRPOS(`raiffeisen-owox.Common_query.replaceUnicode`(UTM_CAMPAIGN) , '|vb') > 0, 'VB', 'CLASSIC') vb,
   `raiffeisen-owox.Common_query.getProcessFunnel`('',PROCESSING_CHANNEL) PROCESSING_CHANNEL,
   ORDER_ID, LEAD_DATE,UPD_DATE, STATUS , NTB, 
   `raiffeisen-owox.Common_query.getMediumCRM`(UTM_MEDIUM) medium,
-  DIV(DATE_DIFF(UPD_DATE, DATE(LEAD_DATE),  DAY),7) + 1 weeks_passed
+  IF(DIV(DATE_DIFF(UPD_DATE, DATE(LEAD_DATE),  DAY),7) + 1 > 10, 10,DIV(DATE_DIFF(UPD_DATE, DATE(LEAD_DATE),  DAY),7) + 1 ) weeks_passed
   FROM `raiffeisen-owox.CRM.orders` T, T.STATUSES 
   WHERE DATE(_PARTITIONTIME) >= "2020-06-01" 
     AND PRODUCT_LINE = 'Debit Cards'
     --AND DATE_DIFF(UPD_DATE, DATE(LEAD_DATE),  DAY) >30
   UNION ALL
-  SELECT  DATE_TRUNC(DATE(LEAD_DATE), ISOWEEK) week_start, 
+  /*добавим статистику по статусам active но без delivered*/
+  SELECT  DATE_TRUNC(DATE(LEAD_DATE), ISOWEEK) week_start, DATE_TRUNC(DATE(UPD_DATE), ISOWEEK) status_week_start,
+  IF( STRPOS(`raiffeisen-owox.Common_query.replaceUnicode`(UTM_CAMPAIGN) , '|vb') > 0, 'VB', 'CLASSIC') vb,
   `raiffeisen-owox.Common_query.getProcessFunnel`('',PROCESSING_CHANNEL) PROCESSING_CHANNEL,
   ORDER_ID, LEAD_DATE,UPD_DATE,REPLACE(STATUS, 'active', 'delivered') STATUS , NTB, 
   `raiffeisen-owox.Common_query.getMediumCRM`(UTM_MEDIUM) medium,
-  DIV(DATE_DIFF(UPD_DATE, DATE(LEAD_DATE),  DAY),7) + 1 weeks_passed
+  IF(DIV(DATE_DIFF(UPD_DATE, DATE(LEAD_DATE),  DAY),7) + 1 > 10, 10,DIV(DATE_DIFF(UPD_DATE, DATE(LEAD_DATE),  DAY),7) + 1 ) weeks_passed
   FROM (
       SELECT * 
       FROM `raiffeisen-owox.CRM.orders` 
@@ -39,5 +42,5 @@ FROM(
   )T, T.STATUSES S
   WHERE S.STATUS = 'active'
 )
-GROUP BY  week_start,PROCESSING_CHANNEL,STATUS , NTB, medium, weeks_passed
+GROUP BY  week_start,PROCESSING_CHANNEL,STATUS , NTB, VB, medium, weeks_passed, status_week_start
 Order by  week_start, STATUS, weeks_passed, lead_count

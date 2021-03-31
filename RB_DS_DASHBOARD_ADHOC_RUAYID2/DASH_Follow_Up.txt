@@ -1,20 +1,40 @@
 WITH 
 CRM AS (
-  SELECT DATE(LeadDate) Date, leadid, TRIM(`raiffeisen-owox.Common_query.replaceUnicode`(UTM_CAMPAIGN)) UTM_CAMPAIGN, TRIM(UTM_CONTENT) UTM_CONTENT, TRIM(UTM_MEDIUM) UTM_MEDIUM, TRIM(UTM_SOURCE) UTM_SOURCE,
-  `raiffeisen-owox.Common_query.isQLeadCRM`(PRODUCT_LINE, STATUS, APPROVAL) QLead,
-  `raiffeisen-owox.Common_query.isIssueCRM`(PRODUCT_LINE, STATUS, APPROVAL) Issue
-  FROM `raiffeisen-owox.Orders_CRM.CRM_orders`
-  WHERE  REGEXP_CONTAINS(TRIM(UTM_MEDIUM),r'^email$|^sms$') 
-  AND DATE(LeadDate) >= '2020-01-01' 
-  AND 	PRODUCT_LINE <> 'RKO'
-  --AND LOWER(UTM_CONTENT) LIKE '%abandoned%'
+    SELECT DATE(LeadDate) Date, leadid, TRIM(`raiffeisen-owox.Common_query.replaceUnicode`(UTM_CAMPAIGN)) UTM_CAMPAIGN, TRIM(UTM_CONTENT) UTM_CONTENT, TRIM(UTM_MEDIUM) UTM_MEDIUM, TRIM(UTM_SOURCE) UTM_SOURCE,
+    `raiffeisen-owox.Common_query.isQLeadCRM`(PRODUCT_LINE, STATUS, APPROVAL) QLead,
+    `raiffeisen-owox.Common_query.isIssueCRM`(PRODUCT_LINE, STATUS, APPROVAL) Issue
+    FROM `raiffeisen-owox.Orders_CRM.CRM_orders`
+    WHERE  `raiffeisen-owox.Common_query.getMediumCRM`(TRIM(UTM_MEDIUM))  = 'OTHER'
+      AND DATE(LeadDate) >= '2020-07-01' 
+      AND 	PRODUCT_LINE <> 'RKO'
+    UNION ALL /*Добавляем лиды найденые по order_id кросс селл*/
+    SELECT CRM.*
+    FROM(
+      SELECT SPLIT( hits.eventInfo.eventLabel, ':')[SAFE_OFFSET(1)] orderID
+      FROM `raiffeisen-owox.64807083.ga_sessions_*` S, S.hits hits
+      WHERE  _TABLE_SUFFIX BETWEEN '20200701' AND FORMAT_DATE('%Y%m%d',CURRENT_DATE())
+        AND hits.eventInfo.eventAction = 'DEBIT_CARD_CROSS_SALE'
+        AND hits.eventInfo.eventCategory = 'send_ok'
+      )
+    JOIN (
+        SELECT DATE(LeadDate) Date, leadid, TRIM(`raiffeisen-owox.Common_query.replaceUnicode`(UTM_CAMPAIGN)) UTM_CAMPAIGN, TRIM(UTM_CONTENT) UTM_CONTENT, 'digital_cross_sell' UTM_MEDIUM, TRIM(UTM_SOURCE) UTM_SOURCE,
+    `raiffeisen-owox.Common_query.isQLeadCRM`(PRODUCT_LINE, STATUS, APPROVAL) QLead,
+    `raiffeisen-owox.Common_query.isIssueCRM`(PRODUCT_LINE, STATUS, APPROVAL) Issue
+    FROM `raiffeisen-owox.CRM.orders_by_year_*`
+    WHERE _TABLE_SUFFIX IN ('2020','2021')
+    ) CRM ON orderID = REGEXP_EXTRACT(leadid, r'\d.*') 
   ),
 Site as (
-  SELECT  PARSE_DATE("%Y%m%d", Date) Date,CONCAT(clientId, visitStartTime) sessions, TRIM(`raiffeisen-owox.Common_query.replaceUnicode`(trafficSource.campaign)) campaign, TRIM(trafficSource.source) source, TRIM(trafficSource.medium) medium,  TRIM(trafficSource.adContent) adContent
-  FROM `raiffeisen-owox.64807083.ga_sessions_*`
-  WHERE  _TABLE_SUFFIX BETWEEN '20200101' AND FORMAT_DATE('%Y%m%d',CURRENT_DATE())
-  AND REGEXP_CONTAINS(TRIM(trafficSource.medium),r'^email$|^sms$') 
-  --AND LOWER(trafficSource.adContent) LIKE '%abandoned%'
+    SELECT  PARSE_DATE("%Y%m%d", Date) Date,CONCAT(clientId, visitStartTime) sessions, TRIM(`raiffeisen-owox.Common_query.replaceUnicode`(trafficSource.campaign)) campaign, TRIM(trafficSource.source) source, TRIM(trafficSource.medium) medium,  TRIM(trafficSource.adContent) adContent
+    FROM `raiffeisen-owox.64807083.ga_sessions_*`
+    WHERE  _TABLE_SUFFIX BETWEEN '20200701' AND FORMAT_DATE('%Y%m%d',CURRENT_DATE())
+      AND `raiffeisen-owox.Common_query.getMediumUTM`(TRIM(trafficSource.medium))  = 'OTHER' 
+
+    UNION ALL /* добавим сеансы в other которые были по кросселу дебетовок*/
+    SELECT  PARSE_DATE("%Y%m%d", Date) Date,CONCAT(clientId, visitStartTime) sessions, TRIM(`raiffeisen-owox.Common_query.replaceUnicode`(trafficSource.campaign)) campaign, TRIM(trafficSource.source) source, 'digital_cross_sell' medium,  TRIM(trafficSource.adContent) adContent
+    FROM `raiffeisen-owox.64807083.ga_sessions_*` S, S.hits hits
+    WHERE  _TABLE_SUFFIX BETWEEN '20200701' AND FORMAT_DATE('%Y%m%d',CURRENT_DATE())
+      AND hits.eventInfo.eventAction = 'DEBIT_CARD_CROSS_SALE'
 ),
 CAMPAIGN_LIST as (
   SELECT UTM_CAMPAIGN
