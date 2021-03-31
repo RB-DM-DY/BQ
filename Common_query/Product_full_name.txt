@@ -1,0 +1,24 @@
+WITH PRODUCT as (
+  SELECT [
+    STRUCT
+      ('Кредитная карта' as product_name,'CC' as product,'Credit Cards' as PRODUCT_LINE,'CC' as product_short_name ),
+      ('Дебетовая карта','DC','Debit Cards','DC'),
+      ('Премиум','Premium Product','Premium 5;Premium Direct','PB'),
+      ('Ипотека','ML / ML REF','Mortgage','ML'),
+      ('Кредит наличными','PL / PL REF / PL Auto','Personal Loans','PL'),
+      ('Накопительный счет','SA','Saving Accounts', 'SA'),
+      ('Депозиты','TD','Standard Term Deposits','TD'),
+      ('РКО','SME','SME','SME')
+
+  ] as List
+
+)
+
+
+SELECT product_short_name, product_name, product, SPLIT(PRODUCT_LINE,";") PRODUCT_LINE FROM PRODUCT P, P.List
+
+
+/* depricated
+SELECT string_field_0 as product_name, string_field_1 as product
+FROM `raiffeisen-owox.Common_query.Product_name`
+WHERE string_field_0 not like "product_name" */

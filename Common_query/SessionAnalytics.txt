@@ -1,0 +1,13 @@
+/*  ▄▀▄ █▄░█ ▄▀▄ █░░ ▀▄░▄▀ ▀█▀ ▀ ▄▀ ▄▀▀ 
+    █▀█ █░▀█ █▀█ █░▄ ░░█░░ ░█░ █ █░ ░▀▄ 
+    ▀░▀ ▀░░▀ ▀░▀ ▀▀▀ ░░▀░░ ░▀░ ▀ ░▀ ▀▀░ */
+    
+SELECT `raiffeisen-owox.Common_query.toDate`(date) as date, IF(customDimensions.index=4,customDimensions.value,NULL) AS sessionId,
+       trafficSource.source AS source, trafficSource.medium AS medium,
+       if(REGEXP_CONTAINS(trafficSource.campaign,r"%7C|%7c|%257C|%257c"),REGEXP_REPLACE(trafficSource.campaign,r"%7C|%7c|%257C|%257c","|"),trafficSource.campaign) AS campaign,
+       clientId, visitId , channelGrouping, trafficSource.keyword, trafficSource.adContent--, hits.eventInfo.eventCategory, hits.eventInfo.eventAction, hits.eventInfo.eventLabel, visitNumber
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions--, UNNEST(hits) AS hits
+WHERE
+      _TABLE_SUFFIX BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'0101') AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
+      --AND trafficSource.medium = "affiliate"
+GROUP BY date, sessionId,clientId, visitId, channelGrouping, source, medium, campaign,trafficSource.keyword, trafficSource.adContent--, hits.eventInfo.eventCategory, hits.eventInfo.eventAction, hits.eventInfo.eventLabel, visitNumber

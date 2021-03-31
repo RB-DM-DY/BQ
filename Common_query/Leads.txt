@@ -1,0 +1,29 @@
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/*-----Таблица Lead-------*/
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+SELECT Leads.Date AS Date, Leads.LeadID AS Leads, Leads.ProductLine AS ProductLine, Leads.Product AS Product, Leads.Source AS Source, Leads.Medium AS Medium,
+         Leads.NTB AS NTB, Leads.StatusLead AS StatusLead, Leads.ApprovalLead AS ApprovalLead --, IF(Price.CostLead IS NULL,0,Price.CostLead) AS LeadPrice
+  FROM (
+    SELECT CONCAT(CAST(EXTRACT(MONTH FROM Date) AS STRING),CAST(EXTRACT(YEAR FROM Date) AS STRING),Product,Source) AS ConCat,
+           Date, LeadID, ProductLine, Product, Source, Medium, NTB, StatusLead, ApprovalLead
+    FROM (
+      SELECT Date, LeadID, ProductLine,	Product, Source, Medium, NTB,	StatusLead,	ApprovalLead
+      FROM (
+        SELECT *,
+               ROW_NUMBER() OVER (PARTITION BY Date, LeadID, ProductLine,	Product, Source, Medium, NTB,	StatusLead,	ApprovalLead) AS ROW
+        FROM (
+          SELECT DATE(LeadDate) AS Date, leadid AS LeadID, PRODUCT_LINE AS ProductLine, 
+             `raiffeisen-owox.Common_query.getProductCRM`(PRODUCT_LINE) AS Product,
+             `raiffeisen-owox.Common_query.getSourceUTM`(UTM_SOURCE) AS Source,      
+                 UTM_MEDIUM AS Medium,
+                 NTB, STATUS AS StatusLead, APPROVAL AS ApprovalLead
+
+          FROM `raiffeisen-owox.Orders_CRM.CRM_orders` 
+          WHERE UTM_MEDIUM = 'affiliate' 
+                AND CAST(DATE(LeadDate) AS STRING) BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'-01-01') AND CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING)
+          --      AND REGEXP_MATCH(PRODUCT_LINE,r'Personal Loans')
+          ) AS t0
+        ) AS t1
+      WHERE ROW=1
+    ) AS t0
+  ) AS Leads

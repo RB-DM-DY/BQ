@@ -1,0 +1,49 @@
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/*-----Таблица Session-------*/
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+SELECT date, Sessions, sessionId, medium, campaign, ConCat, TagNTB,
+  `raiffeisen-owox.Common_query.getSourceUTM`(source) as source,
+  `raiffeisen-owox.Common_query.getProductCampaign`(campaign) AS product
+FROM ( 
+  SELECT t3.date AS date, t3.Sessions AS Sessions, t3.sessionId AS sessionId, t3.source AS source, t3.medium AS medium, 
+         T3.campaign AS campaign, T3.ConCat AS ConCat, IF(T4.SESNTB IS NULL,"yes",T4.SESNTB) AS TagNTB,
+         ROW_NUMBER() OVER (PARTITION BY date, sessionId) AS ROW
+  FROM ( 
+    SELECT date, COUNT(sessionId) AS Sessions, sessionId as sessionId, source, medium,  
+           if(REGEXP_CONTAINS(campaign,r"%2C|%2c"),REGEXP_REPLACE(campaign,r"%2C|%2c",","),campaign) AS campaign,  
+           CONCAT(CAST(date AS STRING),source, medium,if(REGEXP_CONTAINS(campaign,r"%2C|%2c"),REGEXP_REPLACE(campaign,r"%2C|%2c",","),campaign)) AS ConCat 
+    FROM (  
+      SELECT date, sessionId, source, medium, 
+             if(REGEXP_CONTAINS(campaign,r"%3A|%3a|%253A|%253a"),REGEXP_REPLACE(campaign,r"%3A|%3a|%253A|%253a",":"),campaign) AS campaign    
+      FROM ( 
+
+        SELECT date, sessionId, source, medium, campaign
+        FROM (
+          SELECT *,
+                 ROW_NUMBER() OVER (PARTITION BY date, sessionId) AS ROW
+          FROM (
+            SELECT date, IF(customDimensions.index=4,customDimensions.value,NULL) AS sessionId,
+                   trafficSource.source AS source, trafficSource.medium AS medium,
+                   if(REGEXP_CONTAINS(trafficSource.campaign,r"%7C|%7c|%257C|%257c"),REGEXP_REPLACE(trafficSource.campaign,r"%7C|%7c|%257C|%257c","|"),trafficSource.campaign) AS campaign
+            FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS h
+            WHERE
+                  _TABLE_SUFFIX BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'0101') AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
+                  AND trafficSource.medium = "affiliate"
+            GROUP BY date, sessionId, source, medium, campaign
+            ) AS t0
+          WHERE sessionId IS NOT NULL
+          ) AS tROW
+        WHERE ROW=1
+
+        ) AS t1 
+      ) AS t2 
+    GROUP BY date, sessionId, source, medium, campaign, ConCat 
+    ) AS t3 
+    LEFT JOIN ( 
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ТАБЛИЦА С NTB ИНДЕТИФИКАТОРАМИ
+    SELECT * 
+    FROM `raiffeisen-owox.Dictionary_US.NTB_Identification_Query`  
+
+    ) AS t4 
+    ON t3.sessionId=t4.TsessionId
+  )

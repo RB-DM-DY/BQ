@@ -1,0 +1,14 @@
+/*  ▄▀▄ █▄░█ ▄▀▄ █░░ ▀▄░▄▀ ▀█▀ ▀ ▄▀ ▄▀▀ 
+    █▀█ █░▀█ █▀█ █░▄ ░░█░░ ░█░ █ █░ ░▀▄ 
+    ▀░▀ ▀░░▀ ▀░▀ ▀▀▀ ░░▀░░ ░▀░ ▀ ░▀ ▀▀░ */
+    
+SELECT `raiffeisen-owox.Common_query.toDate`(date) as date, IF(customDimensions.index=4,customDimensions.value,NULL) AS sessionId,
+       `raiffeisen-owox.Common_query.clearURL`(hits.page.pagePath) as URL,
+       trafficSource.source AS source,
+       if(REGEXP_CONTAINS(trafficSource.campaign,r"%7C|%7c|%257C|%257c"),REGEXP_REPLACE(trafficSource.campaign,r"%7C|%7c|%257C|%257c","|"),trafficSource.campaign) AS campaign,
+       clientId, visitId ,  trafficSource.adContent, hits.isEntrance, hits.eventInfo.eventCategory,  hits.eventInfo.eventLabel, visitNumber
+FROM `raiffeisen-owox.64807083.ga_sessions_*`, UNNEST(customDimensions) AS customDimensions, UNNEST(hits) AS hits
+WHERE
+      _TABLE_SUFFIX BETWEEN REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -5 DAY) AS STRING),"-","") AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
+      AND trafficSource.medium = "cpc"
+GROUP BY date, sessionId, clientId, visitId, hits.page.pagePath, source, campaign,trafficSource.adContent,hits.isEntrance, hits.eventInfo.eventCategory,  hits.eventInfo.eventLabel, visitNumber 

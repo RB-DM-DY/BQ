@@ -1,0 +1,12 @@
+SELECT 1;
+/*
+CALL  `raiffeisen-owox.Common_query.pivot`(
+  'raiffeisen-owox.Common_query.key-value' # source table
+  ,'raiffeisen-owox.Common_query.test' # destination table
+  , ['product'] # row_ids
+  , 'Date' # pivot_col_name
+  , 'leads' # pivot_col_value
+  , 30 # max_columns
+  , 'SUM' # aggregation
+  , '' # optional_limit
+);*/

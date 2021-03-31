@@ -1,0 +1,30 @@
+/*  ▒██░░░░▐█▀▀─░▄█▀▄─░▐█▀█▄▒▄█▀▀█     ░▐█▀█▒▐█▀▀▄▒▐██▄▒▄██▌
+    ▒██░░░░▐█▀▀░▐█▄▄▐█░▐█▌▐█▒▀▀█▄▄     ░▐█──▒▐█▒▐█░▒█░▒█░▒█░
+    ▒██▄▄█░▐█▄▄░▐█─░▐█░▐█▄█▀▒█▄▄█▀     ░▐█▄█▒▐█▀▄▄▒▐█░░░░▒█▌*/
+
+/*Уникализированные лиды по принипу суммы символов в полях сравнения*/
+
+SELECT Date, LeadID, ProductLine, Product, Source, API, QLead, Issue, Medium, NTB, STATUS, APPROVAL, GOOGLE_ID, UTM_CAMPAIGN, UTM_CONTENT, utm_term, UTM_SOURCE, LeadNumber
+FROM (
+  SELECT *, ROW_NUMBER()  OVER (PARTITION BY LeadID) as LeadNumber
+  FROM (
+    SELECT * 
+    FROM (
+      SELECT DATE(LeadDate) AS Date, leadid AS LeadID, PRODUCT_LINE AS ProductLine, 
+         `raiffeisen-owox.Common_query.getProductCRM`(PRODUCT_LINE) AS Product,
+         `raiffeisen-owox.Common_query.getSourceUTM`(UTM_SOURCE) AS Source, 
+         `raiffeisen-owox.Common_query.isLeadAPI`(leadid) as API,
+         `raiffeisen-owox.Common_query.isQLead`(`raiffeisen-owox.Common_query.getProductCRM`(PRODUCT_LINE),STATUS,APPROVAL) as QLead,
+         `raiffeisen-owox.Common_query.isIssue`(`raiffeisen-owox.Common_query.getProductCRM`(PRODUCT_LINE),STATUS,APPROVAL) as Issue,
+             UTM_MEDIUM AS Medium,
+             NTB, 
+             STATUS, APPROVAL, GOOGLE_ID, UTM_CAMPAIGN, UTM_CONTENT, utm_term, UTM_SOURCE, segmentIssuesLimit
+
+      FROM `raiffeisen-owox.Orders_CRM.CRM_orders` as crm
+      WHERE CAST(DATE(LeadDate) AS STRING) BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'-01-01') 
+            --AND UTM_MEDIUM = 'affiliate' 
+            AND CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING)
+      )
+      GROUP BY Date, LeadID, ProductLine, Product, Source, API, QLead, Issue, Medium, NTB, STATUS, APPROVAL, GOOGLE_ID, UTM_CAMPAIGN, UTM_CONTENT, utm_term, UTM_SOURCE,segmentIssuesLimit
+    )
+  )  

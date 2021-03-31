@@ -1,0 +1,19 @@
+/*
+  Все client ID которых нет в лидах по умолчанию NTB
+  EXIST считается client ID после формирования лида
+
+*/
+SELECT sessionID,
+if(DATE_DIFF(date, CRM.Date	, DAY)>-1,"NTB","EXIST") as NTB
+FROM(
+  SELECT `raiffeisen-owox.Common_query.toDate`(date) as date,
+         clientId, CONCAT(clientId,"_", CAST(visitStartTime AS STRING)) as sessionID, CRM
+  FROM `raiffeisen-owox.64807083.ga_sessions_*`
+  JOIN (
+    SELECT CRM FROM (
+        SELECT DATE(LeadDate) AS Date, GOOGLE_ID
+        FROM `raiffeisen-owox.Orders_CRM.CRM_orders`
+    ) as CRM
+  ) ON clientId = CRM.GOOGLE_ID
+)
+
