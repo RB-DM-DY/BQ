@@ -79,11 +79,11 @@ WHERE DATA_TYPE='OFFLINE_FUNNEL'
 SELECT *,
        CASE
            WHEN REGEXP_CONTAINS(JOIN_KEY,R'MgCom') 
-           THEN 'web-master@raiffeisen.ru;ivan.babaev@raiffeisen.ru;rostislav.orlov@raiffeisen.ru;vladislav.lavrentyev@raiffeisen.ru;vladislav.lavrentyev.raif@gmail.com;viktoria.pustygina@raiffeisen.ru;pkabanov.raiffeisen@gmail.com;mgcomstat3@gmail.com;oleg.rudakov@raiffeisen.ru;dmitry.yugin@raiffeisen.ru'
+           THEN 'web-master@raiffeisen.ru;ivan.babaev@raiffeisen.ru;rostislav.orlov@raiffeisen.ru;vladislav.lavrentyev@raiffeisen.ru;vladislav.lavrentyev.raif@gmail.com;viktoria.pustygina@raiffeisen.ru;pkabanov.raiffeisen@gmail.com;mgcomstat3@gmail.com;oleg.rudakov@raiffeisen.ru;dmitry.yugin@raiffeisen.ru;andrey.krupnov@raiffeisen.ru'
            WHEN REGEXP_CONTAINS(JOIN_KEY,R'Gmobile') 
-           THEN 'web-master@raiffeisen.ru;ivan.babaev@raiffeisen.ru;rostislav.orlov@raiffeisen.ru;vladislav.lavrentyev@raiffeisen.ru;vladislav.lavrentyev.raif@gmail.com;viktoria.pustygina@raiffeisen.ru;pkabanov.raiffeisen@gmail.com;analytics@gomobile.ru;oleg.rudakov@raiffeisen.ru;dmitry.yugin@raiffeisen.ru'
-           WHEN REGEXP_CONTAINS(JOIN_KEY,R'Admitad') THEN 'web-master@raiffeisen.ru;ivan.babaev@raiffeisen.ru;rostislav.orlov@raiffeisen.ru;vladislav.lavrentyev@raiffeisen.ru;vladislav.lavrentyev.raif@gmail.com;viktoria.pustygina@raiffeisen.ru;Pavel.kabanov@raiffeisen.ru;oleg.rudakov@raiffeisen.ru;dmitry.yugin@raiffeisen.ru'
-           ELSE 'web-master@raiffeisen.ru;ivan.babaev@raiffeisen.ru;rostislav.orlov@raiffeisen.ru;vladislav.lavrentyev@raiffeisen.ru;vladislav.lavrentyev.raif@gmail.com;viktoria.pustygina@raiffeisen.ru;pkabanov.raiffeisen@gmail.com;oleg.rudakov@raiffeisen.ru;dmitry.yugin@raiffeisen.ru'
+           THEN 'web-master@raiffeisen.ru;ivan.babaev@raiffeisen.ru;rostislav.orlov@raiffeisen.ru;vladislav.lavrentyev@raiffeisen.ru;vladislav.lavrentyev.raif@gmail.com;viktoria.pustygina@raiffeisen.ru;pkabanov.raiffeisen@gmail.com;analytics@gomobile.ru;oleg.rudakov@raiffeisen.ru;dmitry.yugin@raiffeisen.ru;andrey.krupnov@raiffeisen.ru'
+           WHEN REGEXP_CONTAINS(JOIN_KEY,R'Admitad') THEN 'web-master@raiffeisen.ru;ivan.babaev@raiffeisen.ru;rostislav.orlov@raiffeisen.ru;vladislav.lavrentyev@raiffeisen.ru;vladislav.lavrentyev.raif@gmail.com;viktoria.pustygina@raiffeisen.ru;Pavel.kabanov@raiffeisen.ru;oleg.rudakov@raiffeisen.ru;dmitry.yugin@raiffeisen.ru;andrey.krupnov@raiffeisen.ru'
+           ELSE 'web-master@raiffeisen.ru;ivan.babaev@raiffeisen.ru;rostislav.orlov@raiffeisen.ru;vladislav.lavrentyev@raiffeisen.ru;vladislav.lavrentyev.raif@gmail.com;viktoria.pustygina@raiffeisen.ru;pkabanov.raiffeisen@gmail.com;oleg.rudakov@raiffeisen.ru;dmitry.yugin@raiffeisen.ru;andrey.krupnov@raiffeisen.ru'
        END AS EMAIL_ACCESS 
 
 FROM (
