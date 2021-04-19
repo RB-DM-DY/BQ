@@ -128,6 +128,12 @@ WHERE _TABLE_SUFFIX BETWEEN '20201003' AND FORMAT_DATE('%Y%m%d',CURRENT_DATE() -
 GROUP BY date, sessionId, source, medium, campaign,	CostConCat
 
 UNION ALL
+/*Косты DZEN файлы в папках разделенных на аккаунты*/
+SELECT  FORMAT_DATE('%Y%m%d', date) date,"NULL" AS sessionId,SUM( costNoNds ) adCost, utmSource , utmMedium , utmCampaign ,CONCAT(CAST(date AS STRING),'dzen','cpc', utmCampaign )	CostConCat
+FROM `raiffeisen-owox.RB_DS_TRANSFER_DZEN.dzen_cost`
+GROUP BY date, sessionId, utmSource, utmMedium, utmCampaign, CostConCat
+
+UNION ALL
 
 SELECT date, sessionId, adCost, source, medium, campaign,	CostConCat
 FROM (
