@@ -1,4 +1,5 @@
-SELECT DATE(CAST(Year AS INT64),CAST(Month AS INT64),1) AS Date, Month,	Year,	Sessions,	Leads, QLeads, Issues, Cost,         
+SELECT Date, #DATE(CAST(Year AS INT64),CAST(Month AS INT64),1) AS Date, 
+       Month, Year, Sessions,	Leads, QLeads, Issues, Cost,         
        CASE 
            WHEN Source IS NULL AND Medium IS NULL THEN "(direct)"
            WHEN Source="yandex.ru" AND Medium="referral" THEN "yandex"
@@ -11,11 +12,11 @@ SELECT DATE(CAST(Year AS INT64),CAST(Month AS INT64),1) AS Date, Month,	Year,	Se
         END AS Medium,
         Product, NTB
 FROM (
-SELECT Month, Year,
+SELECT Date, Month, Year, #в прошлом приближении Date не было
        IF(LeadID='notset',0,0) AS Sessions,
        IF(LeadID='notset',0,0) AS Leads, 
        IF(LeadID='notset',0,0) AS QLeads,        
-       COUNT(LeadID) OVER (PARTITION BY Year, Month, Source, Medium, NTB, Product) AS Issues,
+       COUNT(LeadID) OVER (PARTITION BY Date, Year, Month, Source, Medium, NTB, Product) AS Issues, #в прошлом приближении Date не было
        IF(LeadID='notset',0,0) AS Cost,         
        NTB, Product, Source, Medium
 FROM (

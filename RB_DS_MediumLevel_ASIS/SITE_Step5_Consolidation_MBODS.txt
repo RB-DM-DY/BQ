@@ -8,7 +8,7 @@ SELECT t1.Date AS Date, t1.Month AS Month, t1.Year AS Year, T1.TagNTB AS TagNTB,
 FROM (
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- СБОРКА ДЛЯ ДАШБОРДА ПЛАН/ФАКТА
-SELECT DATE(EXTRACT(YEAR FROM Date),EXTRACT(MONTH FROM Date),1) AS Date,
+SELECT Date,#DATE(EXTRACT(YEAR FROM Date),EXTRACT(MONTH FROM Date),1) AS Date,
        EXTRACT(MONTH FROM Date) AS Month,
        EXTRACT(YEAR FROM Date) AS Year,
        IF(NTB="yes","NTB","EXIST") AS TagNTB,

@@ -1,7 +1,8 @@
-SELECT DATE(CAST(Year AS INT64),CAST(Month AS INT64),1) AS Date, Month,	Year,	Sessions,	Leads, QLeads, Issues, Cost, Source, 
+SELECT Date, #DATE(CAST(Year AS INT64),CAST(Month AS INT64),1) AS Date, 
+       Month, Year, Sessions, Leads, QLeads, Issues, Cost, Source, 
        IF(Source="yandex.ru" AND Medium="referral","organic",Medium) AS Medium,	Product, TagNTB
 FROM (
-SELECT Month, Year, 
+SELECT Date, Month, Year, #в прошлом приближее здесь Date не было
        SUM(Sessions) AS Sessions, 
        SUM(Leads) AS Leads, 
        SUM(QLeads) AS QLeads,
@@ -9,27 +10,33 @@ SELECT Month, Year,
        SUM(Cost) AS Cost, Source, Medium, Product, TagNTB
 FROM (
 
-SELECT Month, Year, Sessions, Leads, QLeads, Issues, CAST(ROUND(Sessions*(CostPerMonth/SessionsByMedium),0) AS INT64) AS Cost, 
-       Source, Medium, Product, TagNTB
+SELECT Date, Month, Year, Sessions, Leads, QLeads, Issues, 
+        CAST(ROUND(Sessions*(CostPerMonth/SessionsByMedium),0) AS INT64) AS Cost, 
+       Source, Medium, Product, TagNTB #в прошлом приближее здесь Date не было
 FROM (
 
-SELECT Month, Year,
-       COUNT(sessionId) OVER (PARTITION BY Year, Month, Medium, Product, TagNTB) AS Sessions,
+SELECT Date, Month, Year, #в прошлом приближее здесь Date не было
+       COUNT(sessionId) OVER (PARTITION BY Date, Year, Month, Source, Medium, Product, TagNTB) AS Sessions,
        Leads, QLeads, Issues, Cost, CostPerMonth,    
-       COUNT(sessionId) OVER (PARTITION BY Year, Month, Medium) AS SessionsByMedium,       
+       COUNT(sessionId) OVER (PARTITION BY Year, Month, Source, Medium) AS SessionsByMedium,       
        Source, Medium, Product, TagNTB,
-       ROW_NUMBER() OVER (PARTITION BY Month,	Year, Medium, Product, TagNTB) AS ROW       
+       ROW_NUMBER() OVER (PARTITION BY Date, Month, Year, Source, Medium, Product, TagNTB) AS ROW       
 FROM (
 
-SELECT Date, EXTRACT(MONTH FROM Date) AS Month, EXTRACT(YEAR FROM Date) AS Year, sessionId,  
+SELECT Date, 
+        EXTRACT(MONTH FROM CAST(Date AS DATE)) AS Month, 
+        EXTRACT(YEAR FROM CAST(Date AS DATE)) AS Year, 
+        sessionId,  #ранее 
        Sessions, Leads, QLeads, Issues, Cost, CostPerMonth, Source, Medium, Product, TagNTB
 FROM (
 
-SELECT Date, sessionId, Sessions, Leads, QLeads, Issues, Cost, CostPerMonth, Source, Medium, Product, TagNTB
+SELECT Date, 
+       sessionId, Sessions, Leads, QLeads, Issues, Cost, CostPerMonth, Source, Medium, Product, TagNTB
 FROM (
 
 SELECT TRC.Date AS Date, TRC.sessionId AS sessionId, TRC.Sessions AS Sessions, TRC.Leads AS Leads, TRC.QLeads AS QLeads, TRC.Issues AS Issues, TRC.Cost AS Cost,
-       TRC.CostPerMonth AS CostPerMonth, TRC.Source AS Source, TRC.Medium AS Medium, TRC.Product AS Product, IF(NTB.SESNTB IS NULL,'yes',NTB.SESNTB) AS TagNTB,
+       TRC.CostPerMonth AS CostPerMonth, TRC.Source AS Source, TRC.Medium AS Medium, TRC.Product AS Product, 
+       IF(NTB.SESNTB IS NULL,'yes',NTB.SESNTB) AS TagNTB,
        ROW_NUMBER() OVER (PARTITION BY sessionId) AS ROW
 FROM (
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -46,7 +53,7 @@ SELECT Date, sessionId,
 --//       32 - DAY(DATE_ADD(UTC_USEC_TO_MONTH(PARSE_UTC_USEC(DATE(TIMESTAMP(CONCAT(CAST(YEAR(Date) AS STRING),"-","12","-","01"))))),31,'DAY')) as DaysInMonth,
 
        IF(Medium="organic",
-       IF(EXTRACT(MONTH FROM Date)=EXTRACT(MONTH FROM DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY)) AND EXTRACT(YEAR FROM Date)=EXTRACT(YEAR FROM DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY)),
+       IF(EXTRACT(MONTH FROM CAST(Date AS DATE))=EXTRACT(MONTH FROM DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY)) AND EXTRACT(YEAR FROM CAST(Date AS DATE))=EXTRACT(YEAR FROM DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY)),
           ROUND((1500000/12)/(32-EXTRACT(DAY FROM DATE_ADD(DATE_TRUNC(CAST(Date AS DATE), MONTH), INTERVAL 31 DAY)))*EXTRACT(DAY FROM DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY)),0),
           ROUND(1500000/12,0)),0) AS CostPerMonth, 
 
@@ -57,7 +64,8 @@ SELECT Date, sessionId,
        IF(SProduct IS NULL,Product,SProduct) AS Product,
        IF(SProduct IS NULL,SubProduct,SSubProduct) AS SubProduct       
 FROM (
-SELECT DATE(Year,Month,Day) AS Date,
+SELECT DATE(CAST(SUBSTR(date,0,4) AS INT64),CAST(SUBSTR(SUBSTR(date, 0, 6),-2) AS INT64),CAST(SUBSTR(date,-2) AS INT64)) AS  Date, 
+       #DATE(Year,Month,Day) AS Date, #в первом приближении Date был закомиченный
        sessionId, Source, 
        IF(Source="yandex" AND Medium="referral","organic",Medium) AS Medium, --- ЗАМЕНА МЕДИУМ ПО ЯНДЕКСУ
        HitTime, hitNumber,	Host,	PagePath,	Product, SubProduct, ProductCheck, SubProductCheck, SProduct,	SSubProduct, SPagePath, SHitTime, ShitNumber       
@@ -295,7 +303,7 @@ ON Prod.sessionId=SubProd.sessionId
 ) AS t3
 ) AS t4
 GROUP BY Date, sessionId, Leads, QLeads, Issues, Cost, CostPerMonth, Source, Medium, hitNumber, Host, PagePath, Product, SubProduct 
-) AS t5
+) AS t5 #where regexp_contains(Product, r'PL') and date between '2021-01-01' and '2021-01-31' #!!!!!!!!!!!!!!!!DELETE LATER
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 ) AS TRC
 
@@ -314,5 +322,5 @@ WHERE ROW=1
 ) AS t4
 WHERE ROW=1
 ) AS t5
-GROUP BY Month, Year, Source, Medium, Product, TagNTB
+GROUP BY Date, Month, Year, Source, Medium, Product, TagNTB
 ) AS t6
