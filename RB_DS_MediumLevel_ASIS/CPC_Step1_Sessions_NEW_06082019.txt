@@ -96,18 +96,11 @@ GROUP BY date, source, medium, CampaignName
 
 UNION ALL
 /*Косты Yandex прямой трансфер BQ*/
-SELECT date, source, medium, CampaignName, SUM(Cost) AS Cost
-FROM (
-SELECT FORMAT_DATE('%Y%m%d', date) date ,'yandex' source,'cpc' medium,
-       Impressions, Clicks, Cost,
-       `raiffeisen-owox.RB_DS_RUAKBP5.getPRODUCT_by_CAMPAIGN` (CampaignName) AS Product,
-       `raiffeisen-owox.Common_query.replaceUnicode`(CampaignName) CampaignName, 
-       utm.utm_source, utm.utm_medium, CampaignId, utm.utm_term
+
+SELECT FORMAT_DATE('%Y%m%d', date) date ,'yandex' source,'cpc' medium, `raiffeisen-owox.Common_query.replaceUnicode`(CampaignName) CampaignName, SUM(Cost) Cost
 FROM `raiffeisen-owox.OWOXBI_TRANSFER_YANDEX_DIRECT.yandex_direct_AdCostData`
-WHERE Date >= '2020-11-01'
-GROUP BY date, source, medium, Impressions, Clicks, Cost, Product, CampaignName,
-         utm.utm_source, utm.utm_medium, CampaignId, utm.utm_term
-) AS t1
+WHERE Date >= '2020-12-01'
+AND NOT AdAccount = 'web-master-b2c-dc-cpa'
 GROUP BY date, source, medium, CampaignName
 
 -- UNION ALL дублируется по связанному аккаунту в офокс пайплайн
