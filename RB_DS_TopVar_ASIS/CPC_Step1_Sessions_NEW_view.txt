@@ -58,14 +58,14 @@ WITH TRAFFIC AS ( --<<<<<<<<<<<<<<
     SELECT date, source, `raiffeisen-owox.Common_query.getMediumUTM`(medium) medium, campaign, SUM(adCost) AS adCost
     FROM ( SELECT * FROM `raiffeisen-owox.OWOXBI_CostData.CostData_*`
           WHERE 
-          _TABLE_SUFFIX BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'0101') AND '20201031'
+          _TABLE_SUFFIX BETWEEN CONCAT(CAST(EXTRACT(YEAR FROM CURRENT_DATE())-1 AS STRING),'0101') AND '20201130'
           AND `raiffeisen-owox.Common_query.getMediumUTM`(medium) = "PAID"
           AND adCost > 0
           AND NOT campaign LIKE "%pr:sme%"
           UNION ALL
           SELECT * FROM `raiffeisen-owox.OWOXBI_CostData.CostData_*`
           WHERE 
-          _TABLE_SUFFIX BETWEEN '20201101' AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
+          _TABLE_SUFFIX BETWEEN '20201201' AND REPLACE(CAST(DATE_ADD(CURRENT_DATE(), INTERVAL -1 DAY) AS STRING),"-","")
           AND `raiffeisen-owox.Common_query.getMediumUTM`(medium) = "PAID" 
           AND adCost > 0
           AND NOT (source = "yandex" OR source = "facebook")
@@ -82,7 +82,8 @@ WITH TRAFFIC AS ( --<<<<<<<<<<<<<<
     UNION ALL
     SELECT FORMAT_DATE('%Y%m%d', date) date ,'yandex' source,'PAID' medium, `raiffeisen-owox.Common_query.replaceUnicode`(CampaignName) CampaignName, SUM(Cost) Cost
     FROM `raiffeisen-owox.OWOXBI_TRANSFER_YANDEX_DIRECT.yandex_direct_AdCostData`
-    WHERE Date >= '2020-11-01'
+    WHERE Date >= '2020-12-01'
+    AND NOT AdAccount = 'web-master-b2c-dc-cpa'
     GROUP BY date, source, medium, CampaignName
     
     UNION ALL 	
