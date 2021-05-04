@@ -1,0 +1,13 @@
+SELECT date_trunc(date(LEAD_DATE),ISOWEEK) date,
+`raiffeisen-owox.Common_query.getMediumCRM`( UTM_MEDIUM ) medium,
+NTB, count(ORDER_ID) leads, COUNTIF(isIssue>0) issues
+FROM (
+  SELECT ORDER_ID,LEAD_DATE,UTM_MEDIUM,NTB, 
+  ARRAY_LENGTH(ARRAY(SELECT STATUS
+          FROM UNNEST(STATUSES)
+          WHERE STATUS = 'delivered' OR STATUS = 'active')) isIssue
+  FROM `raiffeisen-owox.CRM.orders` 
+  WHERE DATE(_PARTITIONTIME) >= "2019-01-01" 
+    AND PRODUCT_LINE LIKE '%Debit%')
+GROUP BY Date, medium, NTB 
+ORDER BY Date

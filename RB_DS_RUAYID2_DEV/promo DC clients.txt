@@ -1,0 +1,10 @@
+SELECT DISTINCT date, visitStartTime, clientId, h.page.pagePath, 
+  REGEXP_EXTRACT(h.eventInfo.eventLabel, r"DC_ContextMessage:([^_]*)") promoId,
+  trafficSource.source, trafficSource.medium, trafficSource.campaign, trafficSource.keyword, trafficSource.adContent
+FROM `raiffeisen-owox.64807083.ga_sessions_20210318` S, S.hits h
+WHERE TRUE
+      --AND NOT REGEXP_CONTAINS(h.eventInfo.eventCategory,R"Interaction form$|Interaction: Form") 
+      AND LOWER(h.eventInfo.eventLabel) LIKE "%promocode%"
+      AND LOWER(h.eventInfo.eventLabel) LIKE "%contextmessage%"
+      AND NOT LOWER(h.eventInfo.eventLabel) LIKE "%contextmessage:null%"
+      AND NOT REGEXP_CONTAINS(h.page.pagePath,R".*test.*")

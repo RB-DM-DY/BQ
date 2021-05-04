@@ -1,0 +1,55 @@
+WITH STATUS_DATE AS (
+SELECT * EXCEPT(open_date) , 
+IF( not delivered_date is null AND open_date is null, delivered_date, open_date) open_date
+FROM (
+  SELECT * EXCEPT(delivered_date, open_date) ,
+   IF( not active_date is null AND delivered_date is null, active_date ,delivered_date) delivered_date,
+   IF( not delivered_date is null AND open_date is null, delivered_date, open_date) open_date,
+  FROM (  
+    SELECT ORDER_ID, PROCESSING_CHANNEL,  NTB, UTM_MEDIUM, UTM_CAMPAIGN,
+      MAX(IF(STATUS = 'lead', UPD_DATE, NULL)) as lead_date,
+      MAX(IF(STATUS = 'open', UPD_DATE, NULL)) as open_date,
+      MAX(IF(STATUS = 'delivered', UPD_DATE, NULL)) as delivered_date,
+      MAX(IF(STATUS = 'active', UPD_DATE, NULL)) as active_date
+    FROM(
+      SELECT ORDER_ID, S.UPD_DATE, S.STATUS,  PROCESSING_CHANNEL,  NTB, UTM_MEDIUM, UTM_CAMPAIGN,
+      FROM `raiffeisen-owox.CRM.orders` T, T.STATUSES S
+      WHERE DATE(_PARTITIONTIME) >= "2020-06-01" 
+      AND PRODUCT_LINE LIKE 'Deb%'
+    )GROUP BY ORDER_ID, PROCESSING_CHANNEL,  NTB, UTM_MEDIUM, UTM_CAMPAIGN
+  )
+)
+)
+
+
+
+
+
+SELECT  
+DATE_TRUNC(lead_date, ISOWEEK ) week_start,
+DATE_TRUNC(delivered_date, ISOWEEK ) week_start_delivered,
+processing_channel,  ntb,  medium, vb,
+weeks_lead_to_open,	weeks_lead_to_delivered,	weeks_lead_to_active,	weeks_delivered_to_active,
+count(lead_date) lead_count,
+count(open_date)  open_count,
+count(delivered_date) as delivered_count,
+count(active_date) as active_count
+FROM(
+  SELECT  
+  `raiffeisen-owox.Common_query.getProcessFunnel`('',PROCESSING_CHANNEL) PROCESSING_CHANNEL,
+  ORDER_ID,  NTB, 
+  `raiffeisen-owox.Common_query.getMediumCRM`(UTM_MEDIUM) medium,
+  IF( STRPOS(`raiffeisen-owox.Common_query.replaceUnicode`(UTM_CAMPAIGN) , '|vb') > 0, 'VB', 'CLASSIC') vb,
+  lead_date, open_date, delivered_date, active_date,
+  IF(DATE_DIFF(open_date, LEAD_DATE, WEEK(MONDAY)) + 1 > 10, 10,DATE_DIFF(open_date, LEAD_DATE, WEEK(MONDAY)) + 1) weeks_lead_to_open,
+  IF(DATE_DIFF(delivered_date, LEAD_DATE, WEEK(MONDAY)) + 1 > 10, 10,DATE_DIFF(delivered_date, LEAD_DATE, WEEK(MONDAY)) + 1) weeks_lead_to_delivered,
+  IF(DATE_DIFF(active_date, LEAD_DATE, WEEK(MONDAY)) + 1 > 10, 10,DATE_DIFF(active_date, LEAD_DATE, WEEK(MONDAY))+ 1) weeks_lead_to_active,
+  IF(DATE_DIFF(active_date, delivered_date, WEEK(MONDAY)) + 1 > 10, 10,DATE_DIFF(active_date, delivered_date, WEEK(MONDAY)) + 1) weeks_delivered_to_active,
+  /*
+  IF(DIV(DATE_DIFF(delivered_date, LEAD_DATE, DAY),7) + 1 > 10, 10,DIV(DATE_DIFF(delivered_date, LEAD_DATE, DAY),7) + 1) lead_to_delivered,
+  IF(DIV(DATE_DIFF(active_date, LEAD_DATE, DAY),7) + 1 > 10, 10,DIV( DATE_DIFF(active_date, LEAD_DATE, DAY),7) + 1) lead_to_active,
+  IF(DIV(DATE_DIFF(active_date, delivered_date, DAY),7) + 1 > 10, 10,DIV(DATE_DIFF(active_date, delivered_date, DAY),7) + 1) delivered_to_active */
+  FROM STATUS_DATE
+)
+GROUP BY  week_start,delivered_date,PROCESSING_CHANNEL, NTB, medium, vb, weeks_lead_to_open,	weeks_lead_to_delivered,	weeks_lead_to_active,	weeks_delivered_to_active
+Order by  week_start,  lead_count

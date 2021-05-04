@@ -1,0 +1,14 @@
+SELECT DATE_TRUNC( DATE(LeadDate), MONTH ) month,
+`raiffeisen-owox.WEB_DataSet.getChannelAdvancedCRM`( LOWER(TRIM(UTM_MEDIUM)), LOWER(TRIM(UTM_SOURCE)) ) channel, 
+COUNT( leadid) leads
+FROM `raiffeisen-owox.CRM.orders_by_year_*`
+WHERE PRODUCT_LINE LIKE "Deb%" AND  DATE(LeadDate) < DATE_TRUNC( DATE(CURRENT_DATE()), MONTH )
+GROUP BY month, channel
+UNION ALL
+SELECT DATE_TRUNC( DATE(LeadDate), MONTH ) month,
+`raiffeisen-owox.WEB_DataSet.getChannelAdvancedCRM`( LOWER(TRIM(UTM_MEDIUM)), LOWER(TRIM(UTM_SOURCE)) ) channel, 
+TRUNC(COUNT( leadid) / 22) * 31 leads 
+FROM `raiffeisen-owox.CRM.orders_by_year_*`
+WHERE PRODUCT_LINE LIKE "Deb%" AND  DATE(LeadDate) >= DATE_TRUNC( DATE(CURRENT_DATE()), MONTH )
+GROUP BY month, channel
+ORDER BY month

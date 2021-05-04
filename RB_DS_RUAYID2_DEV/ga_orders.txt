@@ -1,0 +1,25 @@
+SELECT * EXCEPT(urlArr, eventLabelArr, clidArr),
+  STRUCT<path STRING, parameters STRING>(urlArr[SAFE_OFFSET(0)], urlArr[SAFE_OFFSET(1)]) url,
+  STRUCT<source STRING, id STRING>(eventLabelArr[SAFE_OFFSET(0)], eventLabelArr[SAFE_OFFSET(1)]) sendOkOrder,
+  STRUCT<type STRING, id STRING>(clidArr[SAFE_OFFSET(0)], clidArr[SAFE_OFFSET(1)]) clid,
+FROM(
+  SELECT 
+    PARSE_DATE('%Y%m%d',date) date, clientId, visitNumber, visitStartTime,
+    SPLIT(LOWER(TRIM( CONCAT(hits.page.hostname, hits.page.pagePath))),"?") urlArr, 
+    SPLIT(`raiffeisen-owox.Common_query.replaceUnicode`(trafficSource.campaign),"|") campaign, 
+    LOWER(TRIM(trafficSource.source)) source, 
+    LOWER(TRIM(trafficSource.medium)) medium, 
+    SPLIT(LOWER(TRIM(trafficSource.keyword)),",") keyword, 
+    SPLIT(LOWER(TRIM(trafficSource.adContent)),",") adContent, 
+    device.deviceCategory, geoNetwork.country, geoNetwork.region, geoNetwork.city, hits.eventInfo.eventCategory, hits.eventInfo.eventAction, 
+    SPLIT(TRIM(hits.eventInfo.eventLabel), ":") eventLabelArr, 
+    SPLIT((SELECT customDimensions.value FROM S.customDimensions WHERE customDimensions.index = 20), "=") clidArr
+  FROM `raiffeisen-owox.64807083.ga_sessions_*` S, S.hits
+  WHERE TRUE
+   AND S._TABLE_SUFFIX >= '20210406'
+   AND hits.eventInfo.eventCategory LIKE 'send_ok'
+   AND REGEXP_CONTAINS(hits.page.hostname,R"^www\.raiffeisen\.ru|.*ipoteka.raiffeisen.ru")
+   AND NOT REGEXP_CONTAINS(hits.page.pagePath,R"^\/corporate|^\/business|^\/insurance|^\/invest|^\/remote_service")
+   AND NOT REGEXP_CONTAINS(hits.eventInfo.eventLabel, r"sme-|sme-meet")
+   AND NOT REGEXP_CONTAINS(hits.eventInfo.eventAction , r"sme|formNps")
+)

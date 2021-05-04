@@ -1,0 +1,8 @@
+SELECT 
+ leadid
+FROM `raiffeisen-owox.RB_DS_TopVar_ASIS.MD_CRM_orders`
+WHERE true
+  AND PRODUCT_LINE LIKE '%Debit%' 
+  AND LeadDate BETWEEN '2020-01-01' AND '2020-09-15'
+  AND NTB = 'yes'
+  AND STATUS = 'delivered'

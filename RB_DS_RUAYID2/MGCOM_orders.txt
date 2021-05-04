@@ -1,0 +1,62 @@
+WITH
+  LEADS AS (
+    SELECT LeadDate, PRODUCT_LINE, NTB, GOOGLE_ID, STATUS, OPEN_DATE, Delivered_date, Activation_date, APPROVAL, NPV, RFM_SEGMENT, UTM_CAMPAIGN, UTM_CONTENT, UTM_MEDIUM, UTM_SOURCE, utm_term, leadid, segmentRequestLimit, segmentIssuesLimit, PHONE_MD5, EMAIL_MD5, PHONE_SHA256, EMAIL_SHA256
+    FROM `raiffeisen-owox.CRM.orders_by_year_2021`  
+  ),
+  CLID_PARAMETERS AS (
+    SELECT sendOkOrder.id orderId, clid
+    FROM `raiffeisen-owox.RB_DS_ANALYTICAL_LAYER.ga_sendok_*`
+    WHERE _TABLE_SUFFIX > ''
+  ),
+ CAMPAIGN_PARAMETRS AS (
+  SELECT campaign UTM_CAMPAIGN, agency,
+  MAX(IF(key = 'pr', value, NULL)) as pr,
+  MAX(IF(key = 'sp', value, NULL)) as sp,
+  MAX(IF(key = 'ssp', value, NULL)) as ssp,
+  MAX(IF(key = 'plt', value, NULL)) as plt,
+  MAX(IF(key = 'tg', value, NULL)) as tg,
+  MAX(IF(key = 'aud', value, NULL)) as aud,
+  MAX(IF(key = 'sem', value, NULL)) as sem,
+  MAX(IF(key = 'bids', value, NULL)) as bids,
+  MAX(IF(key = 'model', value, NULL)) as model,
+  MAX(IF(key = 'offer', value, NULL)) as offer,
+  MAX(IF(key = 'cntr', value, NULL)) as cntr,
+  MAX(IF(key = 'fdistr', value, NULL)) as fdistr,
+  MAX(IF(key = 'city', value, NULL)) as city,
+  MAX(IF(key = 'vb',  'vb', NULL)) as vb,	
+  MAX(IF(key = 'classic', 'classic', NULL)) as classic,	
+  MAX(IF(key = 'bf', 'bf', NULL)) as bf,	
+  MAX(IF(key = 'stories', 'stories', NULL)) as stories,	
+  MAX(IF(key = 'video', 'video', NULL)) as video,	
+  MAX(IF(key = 'qm', 'qm', NULL)) as qm,	
+  MAX(IF(key = 'brnd', 'brnd', NULL)) as brnd,	
+  MAX(IF(key = 'promo', 'promo', NULL)) as promo,	
+  MAX(IF(key = 'exp', value, NULL)) as exp,	
+  MAX(IF(key = 'splt', 'splt', NULL)) as splt,	
+  MAX(IF(key = 'quiz', 'quiz', NULL)) as quiz	
+  FROM (
+    SELECT campaign, agency, SPLIT(T, ":")[SAFE_OFFSET(0)] as key, SPLIT(T, ":")[SAFE_OFFSET(1)] as value
+    FROM (
+      SELECT campaign , SPLIT(Campaign, "|")[SAFE_OFFSET(0)] as agency, SPLIT(Campaign, "|") Campaign_arr
+      FROM (
+        SELECT LOWER(TRIM(TRIM(`raiffeisen-owox.Common_query.replaceUnicode`(UTM_CAMPAIGN)),'|')) campaign
+            FROM LEADS
+            GROUP BY campaign
+            HAVING campaign LIKE '%|%'
+      )
+    )  as F , F.Campaign_arr as T WHERE ARRAY_LENGTH(Campaign_arr) > 1
+  )
+  GROUP By Campaign, agency
+)
+
+SELECT * EXCEPT(STATUS, APPROVAL)
+FROM(
+  SELECT leadid, LeadDate,
+  IFNULL(APPROVAL,'') APPROVAL, 
+  PRODUCT_LINE, STATUS, NTB, GOOGLE_ID, 
+  LOWER(TRIM(TRIM(`raiffeisen-owox.Common_query.replaceUnicode`(UTM_CAMPAIGN)),'|')) UTM_CAMPAIGN, UTM_CONTENT, UTM_MEDIUM, UTM_SOURCE, utm_term,  PHONE_MD5, EMAIL_MD5, PHONE_SHA256, EMAIL_SHA256, CLID_PARAMETERS.clid.type clidType, CLID_PARAMETERS.clid.id clidId
+  FROM LEADS
+  LEFT JOIN CLID_PARAMETERS ON  REGEXP_EXTRACT(orderId, r"[0-9]+[a-zA-Z0-9]+[0-9]+") = REGEXP_EXTRACT(leadid, r"[0-9]+[a-zA-Z0-9]+[0-9]+")
+)
+LEFT JOIN CAMPAIGN_PARAMETRS USING (UTM_CAMPAIGN)
+LEFT JOIN(SELECT PRODUCT_LINE, STATUS, IFNULL(APPROVAL,'') APPROVAL, FUNNEL_STATUS FROM `raiffeisen-owox.Common_query.funnel_20201001` ) USING(PRODUCT_LINE, STATUS, APPROVAL)

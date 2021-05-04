@@ -1,0 +1,11 @@
+SELECT 
+  DATE(LeadDate) dayCohort,
+  DATE(DATE_TRUNC(LeadDate, WEEK(MONDAY))) weekCohort,
+  DATE(DATE_TRUNC(LeadDate, MONTH)) monthCohort,
+  IF(STATUS = "delivered" OR STATUS = "active" ,DATE_DIFF(Delivered_date, LeadDate, DAY) + 1 , 0) dayToDelivered,
+  IF(STATUS = "delivered" OR STATUS = "active" , DATE_DIFF(Activation_date, LeadDate, DAY) + 1, 0) dayToActive,
+  COUNT( leadid) leads,
+  PROCESSING_CHANNEL, UTM_MEDIUM, UTM_SOURCE
+FROM `raiffeisen-owox.CRM.uploaded_orders`
+WHERE PRODUCT_LINE LIKE "Deb%" --AND DATE(LeadDate) > '2021-04-01'
+GROUP BY 1,2,3,4,5,PROCESSING_CHANNEL, UTM_MEDIUM, UTM_SOURCE
