@@ -181,6 +181,12 @@ WITH TRAFFIC AS ( --<<<<<<<<<<<<<<
     SELECT BFName, CampaignIDCM, GA2.campaign as BFCamp, DateStart, DateFinish
     FROM `raiffeisen-owox.RB_DS_BrandFormance.Dictionary_BrandFormance_Dates`
     LEFT JOIN (SELECT GA2 FROM (SELECT campaign, cast(campaignId as STRING) as campaignId FROM `raiffeisen-owox.OWOXBI_CostData.ancore_ga2_campaign`) GA2) ON CampaignIDDV360=GA2.campaignId 
+    UNION ALL
+    /*Добавляем кампании MGCOM*/
+    SELECT CampaignCM, CID, Campaign, MIN(DATE( Date )) DateStart, MAX(DATE( Date )) DateFinish
+    FROM `raiffeisen-owox.MGCOM_TRANSFER_RB_DS.CM_CostData`
+    WHERE Clicks > 0
+    GROUP BY CampaignCM, CID, Campaign
     ),
     BFSessions AS ( --<<<<<<<<<<<<<<
     -------------------------------------------------------------------------------------------------------------------------------------------
