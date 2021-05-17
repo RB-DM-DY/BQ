@@ -1,0 +1,2 @@
+SELECT *, `raiffeisen-owox.Common_query.getPlatformCRM`(leadid , UTM_MEDIUM , UTM_SOURCE ) PLATFORM
+FROM `raiffeisen-owox.CRM.orders_by_year_2021` 
