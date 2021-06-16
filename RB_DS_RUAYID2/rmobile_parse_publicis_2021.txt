@@ -1,0 +1,40 @@
+WITH 
+ALL_SENDOK_CROSS_SELL AS (
+    SELECT sendOkOrder.id orderId
+    FROM `raiffeisen-owox.RB_DS_ANALYTICAL_LAYER.ga_sendok_*`
+    WHERE eventAction = 'DEBIT_CARD_CROSS_SALE'
+),
+NOTFIND_SENDOK_CROSS_SELL AS (
+    SELECT  CAST(CAST(orderId AS INT64) - 1 AS STRING) orderId FROM ALL_SENDOK_CROSS_SELL
+    LEFT JOIN (SELECT leadid FROM `raiffeisen-owox.CRM.orders_by_year_2021` WHERE PRODUCT_LINE = 'Debit Cards') ON REGEXP_EXTRACT(orderId, r"[0-9]+")  = REGEXP_EXTRACT(leadid , r"[0-9]+")
+    WHERE NOT leadid  IS NULL 
+  ),
+MOBILE_SENDOK AS (
+    SELECT af_channel, appsflyer_id, advertising_id, af_prt, campaign, event_name, event_time, leadid orderId, media_source, platform ,
+    CASE  
+         WHEN `raiffeisen-owox.WEB_DataSet.getChannelAF`(af_prt,media_source,campaign) in ('Gmobile','MgCom','Zorka','Mobio','OHM') THEN 'cpc'
+         WHEN `raiffeisen-owox.WEB_DataSet.getChannelAF`(af_prt,media_source,campaign) in ('Admitad','2leads','Evil','Gradient','cityads','Alfaleadsagency') THEN 'affiliate'
+         WHEN `raiffeisen-owox.WEB_DataSet.getChannelAF`(af_prt,media_source,campaign) in ('Organic') THEN 'organic'
+         else '(not set)'
+       END AS af_medium
+    FROM `raiffeisen-owox.WEB_DataSet.AF_leads_channel`
+)
+
+SELECT L.* REPLACE(
+  IF(orderId IS NULL,UTM_MEDIUM, af_medium) AS UTM_MEDIUM,
+  IF(orderId IS NULL,UTM_SOURCE, media_source) AS UTM_SOURCE,
+  IF(orderId IS NULL,UTM_CAMPAIGN, campaign) AS UTM_CAMPAIGN
+  )
+FROM (
+  /*LeadDate	PRODUCT_LINE	NTB	GOOGLE_ID	STATUS	OPEN_DATE	Delivered_date	Activation_date	APPROVAL	NPV	RFM_SEGMENT	UTM_CAMPAIGN	UTM_CONTENT	UTM_MEDIUM	UTM_SOURCE	utm_term	leadid	segmentRequestLimit	segmentIssuesLimit	SALE_CH_CODE	PROCESSING_CHANNEL	PHONE_MD5	EMAIL_MD5	PHONE_SHA256	EMAIL_SHA256	PLATFORM*/
+  SELECT C.* REPLACE(IF(orderId IS NULL,UTM_MEDIUM, 'digital_cross_sell') AS UTM_MEDIUM), 
+  `raiffeisen-owox.Common_query.getPlatformCRM`(leadid , UTM_MEDIUM , UTM_SOURCE ) PLATFORM
+  FROM `raiffeisen-owox.CRM.orders_by_year_2021` C
+  LEFT JOIN ( 
+    SELECT * FROM ALL_SENDOK_CROSS_SELL
+    UNION ALL
+    SELECT * FROM NOTFIND_SENDOK_CROSS_SELL
+  ) A ON REGEXP_EXTRACT(orderId, r"[0-9]+")  = REGEXP_EXTRACT(leadid , r"[0-9]+") AND PRODUCT_LINE = 'Debit Cards'
+  --WHERE date(LeadDate ) = '2021-04-03' AND NOT orderId IS NULL AND NTB = 'no'
+) L
+JOIN MOBILE_SENDOK ON  REGEXP_EXTRACT(orderId, r"[0-9]+")  = REGEXP_EXTRACT(leadid , r"[0-9]+") AND PRODUCT_LINE = 'Debit Cards' AND DATETIME_DIFF(cast(LeadDate as datetime),cast(event_time as datetime),hour) BETWEEN  -12 and 12 and UTM_MEDIUM = 'rmobile'
