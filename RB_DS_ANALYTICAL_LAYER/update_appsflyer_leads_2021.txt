@@ -1,0 +1,94 @@
+/*
+1 Определение группированного канала (cpc, affiliate ...)
+2 Фрод (не совпадает дата)
+3 
+*/
+
+#Выгружаем сырье ios
+with ios as(
+  SELECT
+    attributed_touch_time
+    ,install_time
+    ,app_id
+    ,app_name
+    ,af_sub_siteid
+    ,af_channel
+    ,appsflyer_id
+    ,advertising_id
+    ,af_prt
+    ,campaign
+    ,media_source
+    ,event_name
+    ,event_time
+    ,af_keywords
+    ,af_siteid
+    ,original_url
+    ,event_value
+    ,platform
+  FROM `raiffeisen-owox.OWOXBI_TRANSFER_APPSFLYER.ios_events`
+  WHERE DATE(_PARTITIONTIME) >='2021-01-01'
+  and event_name='FORM_DC_NTB_SUBMIT_LEAD' 
+),
+#Выгружаем сырье android
+android as(
+  SELECT 
+    attributed_touch_time
+    ,install_time
+    ,app_id
+    ,app_name
+    ,af_sub_siteid
+    ,af_channel
+    ,appsflyer_id
+    ,advertising_id
+    ,af_prt
+    ,campaign
+    ,media_source
+    ,event_name
+    ,event_time
+    ,af_keywords
+    ,af_siteid
+    ,original_url
+    ,event_value
+    ,platform
+  FROM `raiffeisen-owox.OWOXBI_TRANSFER_APPSFLYER.android_events`
+  WHERE DATE(_PARTITIONTIME) >='2021-01-01'
+  and event_name='FORM_DC_NTB_SUBMIT_LEAD' 
+),
+af_union as(
+  select * from(
+    select * from ios
+    union all 
+    select * from android
+  )
+)
+select 
+  attributed_touch_time
+  ,install_time
+  ,app_id
+  ,app_name
+  ,af_sub_siteid
+  ,af_channel
+  ,appsflyer_id
+  ,advertising_id
+  ,af_prt
+  ,campaign
+  ,event_name
+  ,event_time
+  ,af_keywords
+  ,af_siteid
+  ,original_url
+  ,event_value
+  ,`raiffeisen-owox.Common_query.clearAFLeadId_`(event_value) as leadid
+  ,CASE
+       WHEN af_prt IS NOT NULL AND media_source IS NOT NULL THEN media_source
+       WHEN af_prt IS NOT NULL AND media_source IS NULL THEN af_prt            
+       ELSE media_source
+   END AS media_source
+  ,platform
+  ,`raiffeisen-owox.WEB_DataSet.getChannelAF`(af_prt,media_source,campaign) as AFChannel --Выделяем партнеров
+  ,`raiffeisen-owox.WEB_DataSet.getGroupChannelAF`(`raiffeisen-owox.WEB_DataSet.getChannelAF`(af_prt,media_source,campaign)) as AFGroupChannel --Выделяем канал (cpc,affi...)
+  ,crm.ntb
+  ,if(crm.leadid is null,'Yes','Not') as FraudFlag
+from af_union as af
+left join `raiffeisen-owox.Orders_CRM.CRM_orders` as crm
+  on `raiffeisen-owox.Common_query.clearAFLeadId_`(event_value)=crm.leadid and DATETIME_DIFF(cast(crm.leaddate as datetime),cast(event_time as datetime),hour) between -12 and 12 and crm.utm_medium='rmobile'

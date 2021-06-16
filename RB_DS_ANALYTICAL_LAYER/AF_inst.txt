@@ -1,0 +1,71 @@
+/*
+2 NTB/EXIST (задача на команду разработки мобилки)
+3 Фрод не фрод (адмон-отгрузка csv / af protect 360)
+*/
+
+#Выгружаем сырье ios
+with ios as(
+  SELECT
+    attributed_touch_time
+    ,install_time
+    ,app_id
+    ,app_name
+    ,af_sub_siteid
+    ,af_channel
+    ,appsflyer_id
+    ,advertising_id
+    ,af_prt
+    ,campaign
+    ,event_name
+    ,event_time
+    ,af_keywords
+    ,af_siteid
+    ,original_url
+    ,CASE
+            WHEN af_prt IS NOT NULL AND media_source IS NOT NULL THEN media_source
+            WHEN af_prt IS NOT NULL AND media_source IS NULL THEN af_prt            
+            ELSE media_source
+       END AS media_source  
+    ,platform
+    ,`raiffeisen-owox.WEB_DataSet.getChannelAF`(af_prt,media_source,campaign) as AFChannel --Выделяем партнеров
+    ,`raiffeisen-owox.WEB_DataSet.getGroupChannelAF`(`raiffeisen-owox.WEB_DataSet.getChannelAF`(af_prt,media_source,campaign)) as AFGroupChannel --Выделяем канал (cpc,affi...)
+  FROM `raiffeisen-owox.OWOXBI_TRANSFER_APPSFLYER.ios_events`
+  WHERE DATE(_PARTITIONTIME) >='2021-01-01'
+  and event_name= 'install'
+),
+#Выгружаем сырье android
+android as(
+  SELECT 
+    attributed_touch_time
+    ,install_time
+    ,app_id
+    ,app_name
+    ,af_sub_siteid
+    ,af_channel
+    ,appsflyer_id
+    ,advertising_id
+    ,af_prt
+    ,campaign
+    ,event_name
+    ,event_time
+    ,af_keywords
+    ,af_siteid
+    ,original_url
+    ,CASE
+            WHEN af_prt IS NOT NULL AND media_source IS NOT NULL THEN media_source
+            WHEN af_prt IS NOT NULL AND media_source IS NULL THEN af_prt            
+            ELSE media_source
+       END AS media_source
+    ,`raiffeisen-owox.WEB_DataSet.getChannelAF`(af_prt,media_source,campaign) as AFChannel --Выделяем партнеров
+    ,`raiffeisen-owox.WEB_DataSet.getGroupChannelAF`(`raiffeisen-owox.WEB_DataSet.getChannelAF`(af_prt,media_source,campaign)) as AFGroupChannel --Выделяем канал (cpc,affi...)
+    ,platform
+  FROM `raiffeisen-owox.OWOXBI_TRANSFER_APPSFLYER.android_events`
+  WHERE DATE(_PARTITIONTIME) >='2021-01-01'
+  and event_name= 'install'
+)
+
+  select * from(
+    select * from ios
+    union all 
+    select * from android)
+
